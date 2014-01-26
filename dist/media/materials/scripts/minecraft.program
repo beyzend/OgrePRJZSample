@@ -1,0 +1,897 @@
+shared_params params_shadowMatrix
+{
+}
+
+vertex_program PRJZ/PSSM/shadow_caster_vsHLSL hlsl
+{
+	//source file
+	source DeferredPasses.hlsl
+	//profiles vs_3_0
+	target vs_4_1
+	entry_point shadow_caster_vs
+	
+	default_params
+	{
+		shared_params_ref params_shadowMatrix
+		param_named_auto wvpMat worldviewproj_matrix
+		//param_named_auto wvMat worldview_matrix
+		param_named_auto wvMat worldview_matrix
+		param_named_auto pMat projection_matrix
+		param_named_auto depthRange scene_depth_range 0
+		param_named_auto texelOffsets texel_offsets
+	}
+}
+
+// declare the fragment shader (CG for the language)
+fragment_program PRJZ/PSSM/shadow_caster_psHLSL hlsl
+{
+	// source file
+	source DeferredPasses.hlsl
+	// will run on pixel shader 2.0+
+	//profiles ps_3_0
+	target ps_4_1 
+	// entry function
+	entry_point shadow_caster_ps
+
+	default_params
+	{
+	}
+}
+//UNIFIED
+vertex_program PRJZ/PSSM/shadow_caster_vs unified
+{
+	delegate PRJZ/PSSM/shadow_caster_vsHLSL
+}
+
+fragment_program PRJZ/PSSM/shadow_caster_ps unified
+{
+	delegate PRJZ/PSSM/shadow_caster_psHLSL
+}
+
+vertex_program MinecraftVP_cgTest hlsl
+{
+	source DeferredPassesTest.hlsl
+	entry_point main_vp
+	target vs_4_1
+	preprocessor_defines BLOCKS=1,FULLBAND=1
+	
+	default_params
+	{
+		param_named_auto worldViewProj worldviewproj_matrix
+		param_named_auto wMat world_matrix
+		param_named_auto wvMat worldview_matrix
+		param_named_auto shadow texture_worldviewproj_matrix 0
+		param_named_auto shadow1 texture_worldviewproj_matrix 1
+		param_named_auto shadow2 texture_worldviewproj_matrix 2
+		shared_params_ref params_shadowMatrix
+		param_named_auto depthRange0 shadow_scene_depth_range 0
+		param_named_auto depthRange1 shadow_scene_depth_range 1
+		param_named_auto depthRange2 shadow_scene_depth_range 2
+	}
+}
+
+vertex_program PRJZ/MinecraftZPass_vsHLSL hlsl
+{
+	source DeferredPassesTest.hlsl
+	entry_point zpass_vp
+	target vs_4_1
+	preprocessor_defines BLOCKS=1
+	
+	default_params
+	{
+		param_named_auto wvpMat worldviewproj_matrix
+	}
+}
+
+vertex_program PRJZ/CubicTerrain_vp_hlsl hlsl
+{
+	source DeferredPasses.hlsl
+	//profiles vs_3_0 
+	entry_point main_vp
+	target vs_4_1
+	preprocessor_defines TEXTURE_ATLAS=1,FULLBAND=1
+
+	//compile_arguments -DTEXTURE_ATLAS=1
+	default_params
+	{
+		param_named_auto lightPosition	light_position_object_space 0
+		param_named_auto eyePosition	camera_position_object_space 
+		param_named_auto worldViewProj	worldviewproj_matrix
+		param_named_auto depthRange0				shadow_scene_depth_range 0
+		param_named_auto depthRange1				shadow_scene_depth_range 1
+		param_named_auto depthRange2				shadow_scene_depth_range 2
+	}
+}
+vertex_program MinecraftVP_cg hlsl
+{
+	source DeferredPasses.hlsl
+	//profiles vs_3_0 
+	entry_point main_vp
+	target vs_4_1
+	preprocessor_defines TEXTURE_ATLAS=1,FULLBAND=1
+
+	//compile_arguments -DTEXTURE_ATLAS=1
+	default_params
+	{
+		param_named_auto lightPosition	light_position_object_space 0
+		param_named_auto eyePosition	camera_position_object_space 
+		param_named_auto worldViewProj	worldviewproj_matrix
+		param_named_auto depthRange0				shadow_scene_depth_range 0
+		param_named_auto depthRange1				shadow_scene_depth_range 1
+		param_named_auto depthRange2				shadow_scene_depth_range 2
+	}
+}
+
+vertex_program MinecraftVPCharacter_cg hlsl
+{
+	source DeferredPasses.hlsl
+	entry_point main_vp
+	//profiles vs_3_0 
+	target vs_4_1
+	preprocessor_defines TEXTURE_ATLAS=0,FULLBAND=1
+
+	//compile_arguments -DTEXTURE_ATLAS=0
+	default_params
+	{
+		param_named_auto lightPosition	light_position_object_space 0
+		param_named_auto eyePosition	camera_position_object_space
+		param_named_auto worldViewProj	worldviewproj_matrix
+		param_named_auto depthRange0				shadow_scene_depth_range 0
+		param_named_auto depthRange1				shadow_scene_depth_range 1
+		param_named_auto depthRange2				shadow_scene_depth_range 2
+	}
+}
+
+vertex_program PRJZ/MinecraftCharacterCubemap_vsHLSL hlsl
+{
+	source DeferredPassesTest.hlsl
+	entry_point main_vp
+	target vs_4_1
+	preprocessor_defines CHARACTER=1,FULLBAND=1,CUBEMAP=1
+	default_params
+	{
+		param_named_auto worldMat	world_matrix
+		param_named_auto eyePosition	camera_position
+		param_named_auto worldViewProj	worldviewproj_matrix
+		param_named_auto wvMat		worldview_matrix
+		param_named_auto shadow texture_worldviewproj_matrix 0
+		param_named_auto shadow1 texture_worldviewproj_matrix 1
+		param_named_auto shadow2 texture_worldviewproj_matrix 2
+		shared_params_ref params_shadowMatrix
+
+		param_named_auto depthRange0 shadow_scene_depth_range 0
+		param_named_auto depthRange1 shadow_scene_depth_range 1
+		param_named_auto depthRange2 shadow_scene_depth_range 2
+	}
+}
+
+vertex_program PRJZ/MinecraftCharacterNotCubemap_vsHLSL hlsl
+{
+	source DeferredPassesTest.hlsl
+	entry_point main_vp
+	target vs_4_1
+	preprocessor_defines CHARACTER=1,FULLBAND=1,CUBEMAP=0
+	default_params
+	{
+		param_named_auto worldMat	world_matrix
+		param_named_auto eyePosition	camera_position
+		param_named_auto worldViewProj	worldviewproj_matrix
+		param_named_auto wvMat		worldview_matrix
+		//param_named_auto shadow texture_worldviewproj_matrix 0
+		//param_named_auto shadow1 texture_worldviewproj_matrix 1
+		//param_named_auto shadow2 texture_worldviewproj_matrix 2
+	}	
+}
+
+fragment_program MinecraftFP_cgTest hlsl
+{
+	source DeferredPassesTest.hlsl
+	entry_point main_fp
+	target ps_4_1
+	preprocessor_defines BLOCKS=1,FULLBAND=1
+	
+	default_params
+	{
+		param_named_auto gBufferMapDimension texture_size 1
+		param_named_auto inverseViewMat     	 transpose_view_matrix
+		param_named playerPosition float3 0 0 0
+		param_named_auto invShadowMapSize0 inverse_texture_size 6
+		param_named_auto invShadowMapSize1 inverse_texture_size 7
+		param_named_auto invShadowMapSize2 inverse_texture_size 8
+	}
+}
+
+fragment_program PRJZ/MinecraftZPass_psHLSL hlsl
+{
+	source DeferredPassesTest.hlsl
+	entry_point zpass_fp
+	preprocessor_defines BLOCKS=1
+	target ps_4_1	
+
+	default_params
+	{
+	}
+
+}
+
+fragment_program PRJZ/CubicTerrain_fp_hlsl hlsl
+{
+	source DeferredPasses.hlsl
+	
+	entry_point main_fp
+	//profiles ps_3_0 
+	target ps_4_1
+	preprocessor_defines TEXTURE_ATLAS=1,FULLBAND=1
+
+	//compile_arguments -DTEXTURE_ATLAS=1
+	default_params
+	{
+		//param_named_auto lightDiffuse		derived_light_diffuse_colour 0
+		//param_named_auto lightSpecular		derived_light_specular_colour 0
+		//param_named_auto ambient			derived_ambient_light_colour 
+		param_named_auto inverseViewMat     	 transpose_view_matrix
+		param_named_auto invShadowMapSize0	inverse_texture_size 0
+		param_named_auto invShadowMapSize1	inverse_texture_size 1
+		param_named_auto invShadowMapSize2	inverse_texture_size 2
+		param_named_auto texelOffsets		texel_offsets
+		param_named_auto texDim			texture_size 4
+
+	}
+
+}
+
+fragment_program MinecraftFP_cg hlsl
+{
+	source DeferredPasses.hlsl
+	
+	entry_point main_fp
+	//profiles ps_3_0 
+	target ps_4_1
+	preprocessor_defines TEXTURE_ATLAS=1,FULLBAND=1
+
+	//compile_arguments -DTEXTURE_ATLAS=1
+	default_params
+	{
+		//param_named_auto lightDiffuse		derived_light_diffuse_colour 0
+		//param_named_auto lightSpecular		derived_light_specular_colour 0
+		//param_named_auto ambient			derived_ambient_light_colour 
+		param_named_auto inverseViewMat     	 transpose_view_matrix
+		param_named_auto invShadowMapSize0	inverse_texture_size 0
+		param_named_auto invShadowMapSize1	inverse_texture_size 1
+		param_named_auto invShadowMapSize2	inverse_texture_size 2
+		param_named_auto texelOffsets		texel_offsets
+		param_named_auto texDim			texture_size 4
+
+	}
+
+}
+
+fragment_program PRJZ/MinecraftCharacterCubemap_psHLSL hlsl
+{
+	source DeferredPassesTest.hlsl
+
+	entry_point main_fp
+	target ps_4_1
+	preprocessor_defines CHARACTER=1,FULLBAND=1,CUBEMAP=1
+	default_params
+	{
+		param_named_auto inverseViewMat     	 transpose_view_matrix
+		param_named_auto inverseTransViewMatrix inverse_transpose_view_matrix
+		param_named_auto invShadowMapSize0	inverse_texture_size 6
+		param_named_auto invShadowMapSize1	inverse_texture_size 7
+		param_named_auto invShadowMapSize2	inverse_texture_size 8
+		param_named_auto texelOffsets		texel_offsets
+		param_named_auto gBufferMapDimension	texture_size 1
+		//param_named_auto texDim			texture_size 4
+	}
+}
+
+fragment_program PRJZ/MinecraftCharacterNotCubemap_psHLSL hlsl
+{
+	source DeferredPassesTest.hlsl
+
+	entry_point main_fp
+	target ps_4_1
+	preprocessor_defines CHARACTER=1,FULLBAND=1,CUBEMAP=0
+	default_params
+	{
+		param_named_auto inverseViewMat     	 transpose_view_matrix
+		param_named_auto invShadowMapSize0	inverse_texture_size 0
+		param_named_auto invShadowMapSize1	inverse_texture_size 1
+		param_named_auto invShadowMapSize2	inverse_texture_size 2
+		param_named_auto texelOffsets		texel_offsets
+		param_named_auto gBufferMapDimension	texture_size 1
+	}
+}
+
+fragment_program MinecraftFPCharacter_cg hlsl
+{
+	source DeferredPasses.hlsl
+	entry_point main_fp
+	//profiles ps_3_0 
+	target ps_4_1
+	preprocessor_defines TEXTURE_ATLAS=0,FULLBAND=0
+	//compile_arguments -DTEXTURE_ATLAS=0
+	default_params
+	{
+		//param_named_auto lightDiffuse		derived_light_diffuse_colour 0
+		//param_named_auto lightSpecular		derived_light_specular_colour 0
+		//param_named_auto ambient			derived_ambient_light_colour 
+		param_named_auto inverseViewMat      transpose_view_matrix
+		param_named_auto invShadowMapSize0	inverse_texture_size 0
+		param_named_auto invShadowMapSize1	inverse_texture_size 1
+		param_named_auto invShadowMapSize2	inverse_texture_size 2
+		param_named_auto texelOffsets		texel_offsets
+//		param_named_auto texDim			texture_size 4
+
+	}
+}
+
+vertex_program MinecraftVP_glsl glsl
+{
+	
+	source MinecraftVP.vert
+	
+	default_params
+	{
+		param_named_auto	worldViewProjMatrix	worldviewproj_matrix
+	}
+}
+
+fragment_program MinecraftFP_glsl glsl
+{
+	
+	source MinecraftFP.frag
+	default_params
+	{
+		param_named diffuseMap int 0
+	}
+}
+
+vertex_program PRJZ/PSSM/shadow_reciever_vs unified
+{
+	delegate MinecraftVP_cg
+	delegate MinecraftVP_glsl
+}
+
+fragment_program PRJZ/PSSM/shadow_reciever_ps unified
+{
+	delegate MinecraftFP_cg
+	delegate MinecraftFP_glsl
+}
+vertex_program PRJZ/PSSM/shadow_recieverCharacter_vs unified
+{
+	delegate MinecraftVPCharacter_cg
+}
+
+fragment_program PRJZ/PSSM/shadow_recieverCharacter_ps unified
+{
+	delegate MinecraftFPCharacter_cg
+}
+
+vertex_program PRJZ/HDRBackground_hlsl_vs hlsl
+{
+	source HDRBackground.cg
+	target vs_4_1 
+	entry_point background_vs
+	default_params
+	{
+		param_named_auto	vprjMat viewproj_matrix	
+	}
+}
+
+
+fragment_program PRJZ/HDRBackground_hlsl_ps hlsl
+{
+	source HDRBackground.cg
+	target ps_4_1 
+	entry_point background_ps
+	default_params
+	{
+	}
+}
+
+vertex_program PRJZ/HDRBackground_glsl_vs glsl
+{
+	source HDRBackground.vert
+	default_params
+	{
+		param_named_auto	viewProjectionMatrix viewproj_matrix
+	}
+}
+
+fragment_program PRJZ/HDRBackground_glsl_ps glsl
+{
+	source HDRBackground.frag
+	default_params
+	{
+	}
+}
+
+vertex_program PRJZ/HDRBackground_vs unified
+{
+	delegate PRJZ/HDRBackground_hlsl_vs
+	delegate PRJZ/HDRBackground_glsl_vs
+}
+
+fragment_program PRJZ/HDRBackground_ps unified
+{
+	delegate PRJZ/HDRBackground_hlsl_ps
+	delegate PRJZ/HDRBackground_glsl_ps
+}
+
+vertex_program PRJZ/HardwareBasicGBuffer_vsHLSL hlsl
+{
+	//source file
+	source GBuffer.hlsl
+	target vs_4_1
+	entry_point GBuffer_vs
+	preprocessor_defines CHARACTER_HARDWARE_BASIC=1
+	default_params
+	{
+		param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto wvMat worldView_matrix
+		param_named_auto vpMat viewProjection_matrix
+		param_named_auto vMat view_matrix
+		param_named_auto camPos camera_position
+	}
+}
+
+fragment_program PRJZ/HardwareBasicGBuffer_psHLSL hlsl
+{
+	source GBuffer.hlsl
+	target ps_4_1
+	entry_point GBuffer_ps
+	preprocessor_defines CHARACTER_HARDWARE_BASIC=1
+	default_params
+	{
+		param_named_auto nearClip near_clip_distance
+		param_named_auto farClip far_clip_distance
+	}
+}
+
+vertex_program PRJZ/MinecraftGBuffer_vsHLSLTest hlsl
+{
+	//source file
+	source GBufferTest.hlsl
+	target vs_4_1
+	entry_point GBuffer_vs
+	preprocessor_defines BLOCKS=1
+	default_params
+	{
+		param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto wvMat worldView_matrix
+		param_named_auto wMat world_matrix
+		param_named_auto camPos camera_position
+		param_named playerPosition float3 0 0 0
+	
+	}	
+}
+
+vertex_program PRJZ/MinecraftGBuffer_vsHLSL hlsl
+{
+	//source file
+	source GBuffer.hlsl
+	target vs_4_1
+	entry_point GBuffer_vs
+	preprocessor_defines BLOCKS=1
+	default_params
+	{
+		param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto wvMat worldView_matrix
+		param_named_auto wMat world_matrix
+		param_named_auto camPos camera_position
+	}
+}
+
+fragment_program PRJZ/MinecraftGBuffer_psHLSLTest hlsl
+{
+	source GBufferTest.hlsl
+	target ps_4_1
+	entry_point GBuffer_ps
+	preprocessor_defines BLOCKS=1
+	default_params
+	{
+		param_named_auto nearClip near_clip_distance
+		param_named_auto farClip far_clip_distance
+		param_named playerPosition float3 0 0 0 
+	}	
+}
+
+fragment_program PRJZ/MinecraftGBuffer_psHLSL hlsl
+{
+	source GBuffer.hlsl
+	target ps_4_1
+	entry_point GBuffer_ps
+	preprocessor_defines BLOCKS=1
+	default_params
+	{
+		param_named_auto nearClip near_clip_distance
+		param_named_auto farClip far_clip_distance
+		
+	}
+}
+
+vertex_program PRJZ/MinecraftGBuffer_vs unified
+{
+	delegate PRJZ/MinecraftGBuffer_vsHLSL
+}
+
+fragment_program PRJZ/MinecraftGBuffer_ps unified
+{
+	delegate PRJZ/MinecraftGBuffer_psHLSL
+}
+
+vertex_program PRJZ/MinecraftCharacterGBuffer_vsHLSL hlsl
+{
+	//source file
+	source GBufferTest.hlsl
+	target vs_4_1
+	entry_point GBuffer_vs
+	preprocessor_defines CHARACTER=1
+	default_params
+	{
+		param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto wvMat worldView_matrix
+		param_named_auto invWvMat inverse_worldview_matrix
+	}
+}
+
+vertex_program PRJZ/CubemapCharacterGBuffer_vsHLSL hlsl
+{
+	source GBufferTest.hlsl
+	target vs_4_1
+	entry_point GBuffer_vs
+	preprocessor_defines CHARACTER=1,CUBEMAP=1
+	default_params
+	{
+		param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto wvMat worldView_matrix
+		param_named_auto camPos camera_position
+	}
+}
+
+vertex_program PRJZ/CharacterDiffuseNormalGBuffer_vsHLSL hlsl
+{
+	//source file
+	source GBuffer.hlsl
+	target vs_4_1
+	entry_point GBuffer_vs
+	preprocessor_defines CHARACTER=1, NOSPECULAR=1
+	default_params
+	{
+		param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto wvMat worldView_matrix
+		param_named_auto camPos camera_position
+		param_named_auto invWvMat inverse_transpose_worldview_matrix
+	}
+}
+
+
+fragment_program PRJZ/MinecraftCharacterGBuffer_psHLSL hlsl
+{
+	source GBufferTest.hlsl
+	target ps_4_1
+	entry_point GBuffer_ps
+	preprocessor_defines CHARACTER=1
+	//preprocessor_defines BASIC=0
+	default_params
+	{
+		param_named_auto nearClip near_clip_distance
+		param_named_auto farClip far_clip_distance
+	}
+}
+
+fragment_program PRJZ/CubemapCharacterGBuffer_psHLSL hlsl
+{
+	source GBuffer.hlsl
+	target ps_4_1
+	entry_point GBuffer_ps
+	preprocessor_defines CHARACTER=1,CUBEMAP=1
+	default_params
+	{
+	}
+}
+
+fragment_program PRJZ/CharacterDiffuseNormalGBuffer_psHLSL hlsl
+{
+	source GBuffer.hlsl
+	target ps_4_1
+	entry_point GBuffer_ps
+	preprocessor_defines CHARACTER=1, NOSPECULAR=1
+	//preprocessor_defines BASIC=0
+	default_params
+	{
+		param_named_auto nearClip near_clip_distance
+		param_named_auto farClip far_clip_distance
+	}
+}
+
+vertex_program PRJZ/SimpleCharacterGBuffer_vsHLSL hlsl
+{
+	source GBufferTest.hlsl
+	target vs_4_1
+	entry_point GBuffer_vs
+	preprocessor_defines SIMPLE=1
+	default_params
+	{
+		param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto wvMat worldview_matrix
+		param_named_auto invWvMat inverse_worldview_matrix
+	}
+}
+
+fragment_program PRJZ/SimpleCharacterGBuffer_psHLSL hlsl
+{
+	source GBufferTest.hlsl
+	target ps_4_1
+	entry_point GBuffer_ps
+	preprocessor_defines SIMPLE=1
+	default_params
+	{
+		param_named_auto nearClip near_clip_distance
+		param_named_auto farClip far_clip_distance
+	}
+}
+
+
+vertex_program PRJZ/DirectionLightBuffer_vsHLSL hlsl
+{
+	source DeferredLighting.hlsl
+	target vs_4_1
+	entry_point LightBuffer_vs
+	preprocessor_defines DIRECTIONAL=1
+	default_params
+	{
+		param_named_auto	wvpMat worldviewproj_matrix
+		param_named_auto	wvMat  worldview_matrix
+		param_named_auto	vMat view_matrix
+		param_named_auto	lightPosView light_position_view_space 0
+	}
+}
+
+fragment_program PRJZ/DirectionLightBuffer_psHLSL hlsl
+{
+	source DeferredLighting.hlsl
+	target ps_4_1
+	entry_point LightBuffer_ps
+	preprocessor_defines DIRECTIONAL=1
+	default_params
+	{
+		param_named_auto texDim texture_size 0
+		param_named_auto farClip far_clip_distance
+		
+	}
+}
+
+
+vertex_program PRJZ/MinecraftLightBuffer_vsHLSL hlsl
+{
+	source DeferredLighting.hlsl
+	target vs_4_1
+	entry_point LightBuffer_vs
+	
+	default_params
+	{
+		param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto wvMat worldView_matrix
+		param_named_auto vpMat viewProj_matrix
+		//param_named_auto wvMat worldView_matrix
+		param_named_auto vMat view_matrix
+		param_named_auto lightPosView custom 0
+	}
+}
+
+fragment_program PRJZ/MinecraftLightBuffer_psHLSL hlsl
+{
+	source DeferredLighting.hlsl
+	target ps_4_1
+	entry_point LightBuffer_ps
+
+	default_params
+	{
+		param_named_auto texDim texture_size 0
+		param_named_auto farClip far_clip_distance
+		param_named_auto inLightColor custom 1 
+	}	
+}
+
+vertex_program PRJZ/DirectionLightBuffer_vs unified
+{
+	delegate PRJZ/DirectionLightBuffer_vsHLSL
+}
+
+fragment_program PRJZ/DirectionLightBuffer_ps unified
+{
+	delegate PRJZ/DirectionLightBuffer_psHLSL unified
+}
+
+vertex_program PRJZ/MinecraftLightBuffer_vs unified
+{
+	delegate PRJZ/MinecraftLightBuffer_vsHLSL
+}
+
+fragment_program PRJZ/MinecraftLightBuffer_ps unified
+{
+	delegate PRJZ/MinecraftLightBuffer_psHLSL
+}
+
+vertex_program PRJZ/HWLighting_hlsl_vs hlsl
+{
+	source DeferredPassesTest.hlsl
+	entry_point main_vp
+	target vs_4_1
+	preprocessor_defines HARDWARE=1,FULLBAND=1
+	default_params
+	{
+		param_named_auto vpMat viewProj_matrix
+		param_named_auto wvMat worldview_matrix
+	}
+}
+
+fragment_program PRJZ/HWLighting_hlsl_ps hlsl
+{
+	source DeferredPassesTest.hlsl
+	entry_point main_fp
+	target ps_4_1
+	preprocessor_defines HARDWARE=1,FULLBAND=1,CUBEMAP=0
+	default_params
+	{
+		param_named_auto inverseViewMat transpose_view_matrix
+		param_named_auto gBufferMapDimension texture_size 1		
+	}
+}
+
+vertex_program PRJZ/HWBasic_hlsl_vs hlsl
+{
+	source DeferredPasses.hlsl
+	target vs_4_1
+	entry_point HWBasic_vs
+
+	default_params
+	{
+		//param_named_auto wvpMat worldViewproj_matrix
+		param_named_auto vpMat viewProj_matrix
+		param_named_auto wvMat worldView_matrix
+		param_named_auto vMat view_matrix
+		//param_named_auto lightPosView custom 0
+	}
+
+}
+
+fragment_program PRJZ/HWBasic_hlsl_ps hlsl
+{
+	source DeferredPasses.hlsl
+	target ps_4_1
+	entry_point HWBasic_ps
+
+	//param_named_auto colorDelta custom 0
+	default_params
+	{
+		param_named_auto farClip far_clip_distance
+	}
+}
+
+vertex_program hfao_vs hlsl
+{
+	source hfao.cg
+	target vs_4_1
+	entry_point hfao_vs
+	default_params
+	{
+		param_named_auto wvp worldviewproj_matrix
+		//param_named_auto invviewproj inverse_viewproj_matrix
+		param_named_auto camPos camera_position 
+		param_named_auto invview inverse_view_matrix
+	}
+}
+
+fragment_program hfao_ps hlsl
+{
+	source hfao.cg
+	target ps_4_1
+	entry_point hfao_ps
+	default_params
+	{
+		param_named_auto camPos camera_position
+		param_named_auto invTexSize inverse_texture_size 2
+		param_named_auto bitVolInvTexSize inverse_texture_size 3
+		param_named_auto nearClip near_clip_distance
+		param_named_auto farClip far_clip_distance
+		param_named_auto texDim texture_size 0
+		param_named_auto invViewMat view_matrix
+		param_named_auto viewportSize viewport_size
+	}
+}
+
+vertex_program wendland_vs hlsl
+{
+	source filter.cg
+	target vs_4_1
+	entry_point wendland_vs
+	default_params
+	{
+		param_named_auto wvpMat worldviewproj_matrix
+	}
+}
+
+fragment_program wendland_ps hlsl
+{
+	source filter.cg
+	target ps_4_1
+	entry_point wendland_ps
+	default_params
+	{
+		param_named_auto invTexSize inverse_texture_size 0
+	}
+}
+
+vertex_program PRJZ/basic_vs_uv hlsl
+{
+	source common.hlsl
+	target vs_4_1
+	entry_point basic_vs_uv
+	default_params
+	{
+		param_named_auto wvp worldviewproj_matrix
+	}
+}
+
+vertex_program PRJZ/basic_vs hlsl
+{
+    source common.hlsl
+      //profiles vs_3_0 arbvp1
+    target vs_4_1
+    entry_point basic_vs
+    default_params
+    {
+        param_named_auto wvp worldviewproj_matrix
+    }
+}
+
+fragment_program PRJZ/basic_ps hlsl
+{
+	source common.hlsl
+	target ps_4_1
+	entry_point basic_ps
+	default_params
+	{
+	}
+}
+
+fragment_program PRJZ/basic_texture_ps hlsl
+{
+	source common.hlsl
+	target ps_4_1
+	entry_point basic_texture_ps
+	default_params
+	{
+	}
+}
+
+fragment_program PRJZ/hfaoBlurX_ps hlsl
+{
+    source hfao.cg
+    entry_point hfaoBlurX_ps
+      //profiles ps_2_x arbfp1
+    target ps_4_1
+    default_params
+    {
+        param_named_auto invTexSize inverse_texture_size 0
+    }
+}
+
+
+
+
+fragment_program PRJZ/hfaoBlurY_ps hlsl
+{
+    source hfao.cg
+    entry_point hfaoBlurY_ps
+      //profiles ps_2_x arbfp1
+    target ps_4_1
+    default_params
+    {
+        param_named_auto invTexSize inverse_texture_size 0
+    }
+}

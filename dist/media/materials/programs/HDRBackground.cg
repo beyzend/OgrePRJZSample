@@ -1,0 +1,17 @@
+void background_vs(
+		   float4 position : POSITION,
+		   out float4 oPosition : SV_POSITION,
+		   uniform float4x4 vprjMat
+		   )
+{
+  //oPosition = mul(wvpMat, position);
+  oPosition = mul(vprjMat, position);
+}
+
+void background_ps(
+		   out float4 oColour : SV_TARGET
+		   )
+{
+  float4 backgroundColor = float4(0.109f, 0.417f, 0.625f, 1.0f) * 0.001; //ocean color
+  oColour = backgroundColor;
+}

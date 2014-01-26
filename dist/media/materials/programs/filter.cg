@@ -1,0 +1,108 @@
+SamplerState FilterMap
+{
+  AddressU = Wrap;
+  AddresV = Wrap;
+};
+
+float square(float a)
+{
+  return a * a;
+}
+
+float wendland(float h, float t)
+{
+  float thinvers = t / h;
+  return (float(t < h) * square(square(1 - thinvers)) * (4 * thinvers + 1));
+}
+
+void wendland_vs(
+		   float4 p : POSITION,
+		   float2 uv : TEXCOORD0,
+		   out float4 oPosition : SV_POSITION,
+		   out float2 oUv : TEXCOORD0,
+		   uniform float4x4 wvpMat
+		   )
+{
+  oPosition = mul(wvpMat, p);
+  //float2 tuv = sign(uv.xy);
+  //tuv = (float2(tuv.x, -tuv.y) + 1.0) * 0.5;
+  oUv = uv;
+}
+//actually box filter
+float4 boxFilter(
+		   float2 uv,
+		   float4 invTexSize,
+		   int steps,
+		   uniform Texture2D map
+		   ) : SV_Target0
+{
+  float4 sum = float4(0.0, 0.0, 0.0, 0.0);
+  float2 lowPos = float2(-steps / 2, -steps / 2);
+  for(int i = 0; i < steps; ++i)
+    {
+      for(int j = 0; j < steps; ++j)
+	{
+	  float2 coords = float2(uv) + (float2(i, j) + lowPos) * invTexSize.xy;
+	  //float4 tex = tex2D(map, coords);
+	  float4 tex = map.Sample(FilterMap, coords);
+	  sum += tex;
+	}
+    }
+  sum /= (steps * steps);
+  return sum;
+}
+float4 noFilter(
+		 float2 uv : TEXCOORD0,
+		 float4 invTexSize,
+		 uniform Texture2D map : register(s0)
+		 ) : SV_Target0
+{
+  //return tex2D(map, uv);
+  return map.Sample(FilterMap, uv);
+}
+float4 wendlandFilter(
+		 float2 uv,
+		 float4 invTexSize,
+		 int steps,
+		 uniform Texture2D map
+		 )
+{
+  float4 sum = float4(0.0, 0.0, 0.0, 0.0);
+  float weightSum = 0;
+  for(int i = 0; i < steps; ++i)
+    {
+      //float isqr = float(i * i);
+      for(int j = 0; j < steps; ++j)
+	{
+	  float2 coords = uv + ((float2(i, j)) * invTexSize.xy);
+	  //float4 tex = tex2D(map, coords);
+	  float4 tex = map.Sample(FilterMap, coords);
+	  float weight = wendland(1.0, sqrt(float(i * i + j * j)) / float(steps));
+	  sum += tex * weight;
+	  weightSum += weight;
+	}
+    }
+  sum /= weightSum;
+  return sum;
+  //return float4(sum.xyz, 1.0);
+  //return float4(uv, 0.0, 1.0);
+  //return float4(tex2D(map, uv).xyz, 1.0);
+}
+
+float4 wendland_ps(
+		   in float4 screenPos : VPOS,
+		   in float2 uv : TEXCOORD0,
+		   uniform float4 invTexSize,
+		   uniform Texture2D map : register(s0)
+		   ) : SV_Target0
+{
+  const int steps = 4;
+  //return boxFilter(uv, invTexSize, steps,map);
+  //invTexSize *= 2;
+  return wendlandFilter(uv, invTexSize, steps, map);
+  //return noFilter(uv, invTexSize, map);
+  //return float4(offset, 0.0, 1.0);
+}
+
+
+

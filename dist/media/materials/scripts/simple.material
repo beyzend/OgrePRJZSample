@@ -1,0 +1,9 @@
+material simple/simplered
+{
+	technique
+	{
+		pass
+		{
+		}
+	}
+}

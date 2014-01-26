@@ -1,0 +1,158 @@
+import * from "minecraft.material"
+import * from "minecraft.program"
+
+
+material preview_cubemap : PRJZ/Minecraft2
+{
+	set_texture_alias diffuseMap texture.tif gamma
+	set_texture_alias normalMap normal.png
+	set_texture_alias specularMap texture_ref.tif
+	set_texture_alias cubeMap OutputCube.dds
+	technique lighting
+	{
+		pass
+		{
+			fog_override = true
+			depth_write on
+			depth_check on
+			//cull_hardware none
+			
+			vertex_program_ref PRJZ/MinecraftCharacterCubemap_vsHLSL
+			{
+			}
+			fragment_program_ref PRJZ/MinecraftCharacterCubemap_psHLSL
+			{
+			}
+		}
+	}
+	technique gbuffer
+	{
+		scheme gbuffer
+
+		pass
+		{
+			
+			vertex_program_ref PRJZ/MinecraftCharacterGBuffer_vsHLSL
+			{
+			}
+			fragment_program_ref PRJZ/MinecraftCharacterGBuffer_psHLSL
+			{
+			}
+		}
+	}
+}
+
+material preview_diffusenormalspecular : PRJZ/Minecraft2
+{
+	set_texture_alias diffuseMap ffman_texture.tif gamma
+	set_texture_alias normalMap ffman_normal.png
+	set_texture_alias specularMap texture_ref.tif
+	set_texture_alias cubeMap OutputCube.dds
+	technique lighting
+	{
+		pass
+		{
+			depth_write on
+			depth_check on
+			
+			vertex_program_ref PRJZ/MinecraftCharacterCubemap_vsHLSL
+			{
+			}
+			fragment_program_ref PRJZ/MinecraftCharacterCubemap_psHLSL
+			{
+			}
+		}
+	}
+	technique gbuffer
+	{
+		scheme gbuffer
+		
+		pass
+		{
+			vertex_program_ref PRJZ/MinecraftCharacterGBuffer_vsHLSL
+			{
+			}
+
+			fragment_program_ref PRJZ/MinecraftCharacterGBuffer_psHLSL
+			{
+			}
+		}
+	}		
+}
+
+material preview2_diffusenormalspecular : PRJZ/Minecraft2
+{
+	set_texture_alias diffuseMap jeans_texture.tif gamma
+	set_texture_alias normalMap jeans_normal.png
+	set_texture_alias specularMap jeans_specular.tif
+	set_texture_alias cubeMap OutputCube.dds
+	technique lighting
+	{
+		pass
+		{
+			depth_write on
+			depth_check on
+			
+			vertex_program_ref PRJZ/MinecraftCharacterCubemap_vsHLSL
+			{
+			}
+			fragment_program_ref PRJZ/MinecraftCharacterCubemap_psHLSL
+			{
+			}
+		}
+	}
+	technique gbuffer
+	{
+		scheme gbuffer
+		
+		pass
+		{
+			vertex_program_ref PRJZ/MinecraftCharacterGBuffer_vsHLSL
+			{
+			}
+
+			fragment_program_ref PRJZ/MinecraftCharacterGBuffer_psHLSL
+			{
+			}
+		}
+	}		
+}
+
+material preview3_diffusenormalspecular : PRJZ/Minecraft2
+{
+	set_texture_alias diffuseMap kubunaut_diffuse_ao_1024.tga gamma
+	set_texture_alias normalMap kubunaut_normals_1024.tga
+	set_texture_alias specularMap kubucolor_specular.tga
+	set_texture_alias cubeMap OutputCube.dds
+	technique lighting
+	{
+		pass
+		{
+			depth_write on
+			depth_check on
+			
+			vertex_program_ref PRJZ/MinecraftCharacterCubemap_vsHLSL
+			{
+			}
+			fragment_program_ref PRJZ/MinecraftCharacterCubemap_psHLSL
+			{
+			}
+		}
+	}
+	technique gbuffer
+	{
+		scheme gbuffer
+		
+		pass
+		{
+			vertex_program_ref PRJZ/MinecraftCharacterGBuffer_vsHLSL
+			{
+			}
+
+			fragment_program_ref PRJZ/MinecraftCharacterGBuffer_psHLSL
+			{
+			}
+		}
+	}		
+}
+

@@ -1,0 +1,1298 @@
+//#define BIAS 0
+#define PI 3.14159265f
+
+#include "shadows.cg"
+#include "NormalEncoding.cg"
+#include "Shading.cg"
+
+#define SKY 1
+//#define FULLBAND 1
+#define SHADOWS 0
+
+struct VS_OUT
+{
+  float4 pos : POSITION;
+  float4 colour : COLOR;
+  float4 worldPos : TEXCOORD0;
+  float4 textureAtlasOffset : TEXCOORD1_centroid;
+  //float4 oViewTangent : TEXCOORD2;
+  //float4 oViewBiTangent : TEXCOORD3;
+
+  //float3 oLightDir : TEXCOORD2;
+  //float3 oHalfAngle : TEXCOORD3;
+  //float4 oLightPosition0 : TEXCOORD4;
+  //float4 oLightPosition1 : TEXCOORD5;
+  //float4 oLightPosition2 : TEXCOORD6;
+};
+
+
+
+
+
+//#define NUM_OF_COEF 3
+//#if TEXTURE_ATLAS
+#define ATLAS_WIDTH 4096.0
+#define TEX_WIDTH 256.0
+//#define TEX_WIDTH 1024.0
+//#define ATLAS_WIDTH 1024.0
+//#define TEX_WIDTH 64.0
+//#define ATLAS_WIDTH 8192.0
+//#define TEX_WIDTH 512.0
+//#define ATLAS_WIDTH 2048.0
+//#define TEX_WIDTH 128.0
+
+
+
+
+#define eOffset (TEX_WIDTH - 1) / ATLAS_WIDTH
+//#endif
+
+void ClearQuad_vs(
+		  float4 position : POSITION,
+		  out float4 oPosition : POSITION,
+		  uniform float4x4 wvpMat
+		  )
+{
+  oPosition = mul(wvpMat, position);
+}
+
+void ClearQuad_ps(
+		  out float4 oColor0 : COLOR0
+		  )
+{
+  oColor0 = float4(0.0, 0.0, 0.0, 0.0);
+}
+
+float ComputeMipLevel(float2 uv, float2 texSize)
+{
+  float2 uvInPix = uv * texSize;
+  float2 dx = ddx(uvInPix);
+  float2 dy = ddy(uvInPix);
+
+  float2 d = max(dot(dx, dx), dot(dy, dy));
+  return 0.4 * log2(d);
+}
+
+void ComputeBlockXY(float uvX, out float2 blockCoords)
+{
+  float idx = uvX * 256.0 - 1;
+  blockCoords.y = floor(idx / 16.0);
+  blockCoords.x = (idx - blockCoords.y * 16.0);
+  
+  //hardcoded for 4 texture per row
+/*   float idx = int(uvX * 256.0 - 1) % 4; */
+/*   //blockCoords.y = floor(idx / 4.0); */
+/*   blockCoords.y = 0; */
+/*   blockCoords.x = idx - blockCoords.y * 4.0; */
+
+}
+
+//This function will compute a block's UV given a block's normal in world coordinates and it's world position.
+void ComputeBlockUV(inout float3 normal, float4 worldPos, out float3 uv0, out float4 dxdy)
+{
+  float3 dx = ddx(worldPos.xyz);
+  float3 dy = ddy(worldPos.xyz);
+  normal = normalize(cross(dy, dx));
+
+  uv0 = frac(worldPos.xyz);
+
+  if(normal.x > 0.5)
+    {
+      uv0.xy = frac(float2(-worldPos.z, -worldPos.y));
+      //uv0 = frac(float2(-worldPos.z, -worldPos.y));
+      //uv0.xy = uv0.zy;
+      dxdy = float4(dx.zy, dy.zy);
+    }
+  
+  if(normal.x < -0.5)
+    {
+      //uv0 = frac(float2(worldPos.z, -worldPos.y));
+      uv0.xy = frac(float2(worldPos.z, -worldPos.y));
+      //uv0.xy = uv0.zy;
+      dxdy = float4(dx.zy, dy.zy);
+    }
+  //top
+  
+  if(normal.y > 0.5)
+    {
+      //uv0 = frac(worldPos.xz);
+      uv0.xy = frac(worldPos.xz);
+      //uv0.xy = uv0.xz;
+      dxdy = float4(dx.xz, dy.xz);
+    }
+  
+  //bottom
+  if(normal.y < -0.5)
+    {
+      uv0.xy = frac(float2(-worldPos.x, worldPos.z));
+      //uv0 = frac(float2(-worldPos.x, worldPos.z));
+      //uv0.xy = uv0.xz;
+      dxdy = float4(dx.xz, dy.xz);
+    }
+  
+  if(normal.z > 0.5)
+    {
+      uv0.xy = frac(float2(worldPos.x, -worldPos.y));
+      //uv0 = frac(float2(-worldPos.x, worldPos.z));
+      //uv0.xy = uv0.xz;
+      dxdy = float4(dx.xy, dy.xy);
+      //uv0 = float2(In.worldPos.x, -In.worldPos.y);
+    }
+  if(normal.z < -0.5)
+    {
+      uv0.xy = frac(float2(-worldPos.x,-worldPos.y));
+      //uv0 = frac(float2(-worldPos.x,-worldPos.y));
+      //uv0.xy = uv0.xy;
+      dxdy = float4(dx.xy, dy.xy);
+    }
+  //dxdy *= 16.0;
+  //clamp(uv0, 0.0, 1.0);
+}
+
+float4 Tex2DAtlas(sampler2D tex, float2 uv, float4 dxdy)
+{
+  //return tex2Dgrad(tex, uv, dxdy.xy, dxdy.zw);
+  //float2 dx = ddx(uv);
+  //float2 dy = ddy(uv);
+  //return tex2Dgrad(tex, uv, dx, dy);
+ 
+  float2 dx = ddx(uv);
+  float2 dy = ddy(uv);
+
+  return tex2Dgrad(tex, dxdy.xy, dx, dy);
+
+  //return tex2D(tex, uv);
+}
+
+float4 Tex2DAtlasMip(sampler2D tex, float2 uv, float mipLevel)
+{
+  return tex2Dlod(tex, float4(uv, 0, mipLevel));
+}
+
+float2 ComputeParallaxUV(float3 TBNView, float2 uv, sampler2D normalMap, float fBumpScale, float4 dxdy)
+{
+  float3 vEye = -TBNView;
+  float2 vCoord = uv;
+
+  float fDepth = tex2D(normalMap, uv).w;
+  float2 vHalfOffset = vEye.xy * (fDepth) * fBumpScale;
+  //fDepth = (fDepth - (Tex2DAtlas(normalMap, vCoord + vHalfOffset, dxdy).x * 2.0 - 1.0)) * 0.5;
+  fDepth = (fDepth - (tex2D(normalMap, vCoord + vHalfOffset).x * 2.0 - 1.0)) * 0.5;
+  vHalfOffset = vEye.xy * (fDepth) * fBumpScale;
+  //fDepth = (fDepth - (Tex2DAtlas(normalMap, vCoord + vHalfOffset, dxdy).x * 2.0 - 1.0)) * 0.5;
+  fDepth = (fDepth - (tex2D(normalMap, vCoord + vHalfOffset).x * 2.0 - 1.0)) * 0.5;
+  vHalfOffset = vEye.xy * (fDepth) * fBumpScale;
+  return vCoord + vHalfOffset;
+}
+
+float2 ComputeParallaxUVNoAtlas(float3 TBNView, float2 uv, sampler2D normalMap, float fBumpScale)
+{
+  float3 vEye = -TBNView;
+  float2 vCoord = uv;
+
+  float fDepth = tex2D(normalMap, uv).w;
+  float2 vHalfOffset = vEye.xy * (fDepth) * fBumpScale;
+  fDepth = (fDepth - (tex2D(normalMap, vCoord + vHalfOffset).x * 2.0 - 1.0)) * 0.5;
+  vHalfOffset = vEye.xy * (fDepth) * fBumpScale;
+  fDepth = (fDepth - (tex2D(normalMap, vCoord + vHalfOffset).x * 2.0 - 1.0)) * 0.5;
+  vHalfOffset = vEye.xy * (fDepth) * fBumpScale;
+  //return vCoord + vHalfOffset;
+  return vCoord;
+}
+
+/* float2 ComputeParallaxUV(float3 TBNView, float2 uv, sampler2D normalMap, float fBumpScale) */
+/* { */
+
+/*   const int MAX_POINTS = 50; */
+/*   const float3 intervalMult = float3(0.00048828125, 0.00048828125, 0.2); // Fine for 128x128 tile size */
+/*   float3 vEye = -TBNView; */
+/*   float3 vCoord = float3(uv.xy, 1.0); */
+/*   float2 minCoord; */
+/*   float2 maxCoord; */
+/*   if (tex2D(normalMap, vCoord.xy).a < 1.0) { */
+/*     minCoord = float2(vCoord.x - (vCoord.x % 0.0625), vCoord.y - (vCoord.y % 0.0625)); */
+/*     maxCoord = float2(minCoord.x + 0.0625, minCoord.y + 0.0625); */
+		
+/*     float3 interval = vEye * intervalMult;  */
+		
+/*     for (int loopCount = 0; tex2D(normalMap, vCoord.xy).a < vCoord.z && loopCount < MAX_POINTS; ++loopCount) { */
+/*       vCoord += interval; */
+/*       if (vCoord.x < minCoord.x) { */
+/* 	vCoord.x += 0.0625; */
+/*       } else if (vCoord.x >= maxCoord.x) { */
+/* 	vCoord.x -= 0.0625; */
+/*       } */
+/*       if (vCoord.y < minCoord.y) { */
+/* 	vCoord.y += 0.0625; */
+/*       } else if (vCoord.y >= maxCoord.y) { */
+/* 	vCoord.y -= 0.0625; */
+/*       } */
+/*     } */
+/*   } */
+
+/*   return vCoord.xy; */
+/* } */
+
+
+
+
+void GBuffer_vs(
+		float4 position : POSITION,
+		float4 uv1 : TEXCOORD0,
+		float4 uv2 : TEXCOORD1,
+		out float4 oPosition : POSITION,
+		out float4 oViewPos : TEXCOORD0,
+		uniform float3 camPos,
+#if (SIMPLE)
+		float3 normal : NORMAL,
+		out float3 oNormal : TEXCOORD1,
+		out float4 oUv : TEXCOORD2,
+		uniform float4x4 wvMat2,
+		
+#elif (CHARACTER && !HARDWARE) 
+		float3 tangent : TANGENT0,
+		float3 normal : NORMAL,
+		out float3 oNormal : TEXCOORD1_centroid,
+		out float4 oUv : TEXCOORD2_centroid,
+		out float3 oViewTangent : TEXCOORD3_centroid,
+		out float3 oViewBiTangent : TEXCOORD4_centroid,
+		out float4 textureAtlasOffset : TEXCOORD5_centroid,
+#elif (CHARACTER && HARDWARE)
+		float4 mat14 : TEXCOORD1,
+		float4 mat24 : TEXCOORD2,
+		float4 mat34 : TEXCOORD3,
+		uniform float4x4 vpMat,
+		uniform float4x4 vMat,
+#else
+		uniform float4x4 wMat,
+		out float4 oWorldPos : TEXCOORD2_centroid,
+		out float4 textureAtlasOffset : TEXCOORD3_centroid,
+		out float2 oRealUv : TEXCOORD4_centroid,
+		
+#endif
+		uniform float4x4 wvpMat,
+		uniform float4x4 wvMat
+		
+		)
+{
+ 
+  //oViewPos = mul(wvMat, position);
+
+#if (SIMPLE)
+  oPosition = mul(wvpMat, position);
+  float4 viewPos = mul(wvMat, position);
+  oViewPos = viewPos;
+  oNormal = normal.xyz;//mul(float4(normal.xyz, 0.0),wvMat2).xyz;
+  oUv = uv1;
+
+#elif (CHARACTER && !HARDWARE && !SIMPLE)
+  oPosition = mul(wvpMat, position);
+  float4 viewPos = mul(wvMat, position);
+  oViewPos = viewPos;
+  oNormal = mul(wvMat, float4(normal, 0.0)).xyz;
+  oUv = uv1;
+  oViewTangent = mul(wvMat, float4(tangent, 0.0)).xyz; 
+  oViewBiTangent = cross(oViewTangent, oNormal);
+#elif (CHARACTER && HARDWARE && !SIMPLE)
+  float3x4 worldMatrix;
+  worldMatrix[0] = mat14;
+  worldMatrix[1] = mat24;
+  worldMatrix[2] = mat34;
+
+  float4 worldPosition = float4(mul(worldMatrix, position).xyz, 1.0);
+  oPosition = mul(vpMat, worldPosition);
+  float4 viewPos = mul(vMat, worldPosition);
+  oViewPos = viewPos;
+  oNormal = mul(vMat, float4(mul(worldMatrix, normal), 0.0)).xyz;
+  oUv = uv1;
+  oViewTangent = mul(wvMat, float4(mul(worldMatrix, tangent), 0.0)).xyz; 
+  oViewBiTangent = cross(oViewTangent, oNormal);
+  textureAtlasOffset = float4(0, 0, 0, 0);
+#else //not character
+  oPosition = mul(wvpMat, position);
+  float4 viewPos = mul(wvMat, position);
+  oViewPos = viewPos;
+  float2 blockCoords;
+  ComputeBlockXY(uv1.x, blockCoords);
+  textureAtlasOffset = float4(blockCoords.x + 0.25, blockCoords.y + 0.25, 0, 0) * eOffset; 
+  //textureAtlasOffset = float4(blockCoords.x, blockCoords.y, 0, 0) * eOffset; 
+  oWorldPos = position + float4(0.5, 0.5, 0.5, 0.5);
+  oRealUv = uv2.xy;
+  //oViewPos.xyz = viewPos.xyz + camPos.xyz;
+#endif
+}
+
+//Code from ShaderX5:
+float3x3 compute_tangent_frame_03(float3 N, float3 p, float2 uv)
+{
+  float3 dp1 = ddx(p);
+  float3 dp2 = ddy(p);
+  float2 duv1 = ddx(uv);
+  float2 duv2 = ddy(uv);
+
+  float2x3 M = float2x3(dp1, dp2);
+  float3 T = mul( float2(duv1.x, duv2.x), M);
+  float3 B = mul( float2(duv1.y, duv2.y), M);
+
+  T = normalize(T);
+  B = normalize(B);
+  float3 tN = cross(B, T);
+
+  return float3x3(T, B, tN);
+
+}
+
+
+
+void GBuffer_ps(
+		float4 inViewPos : TEXCOORD0,
+		uniform float nearClip,
+		uniform float farClip,
+		uniform sampler2D diffuseMap : register(s0),
+		uniform sampler2D normalMap : register(s1),
+		uniform sampler2D specularMap : register(s2),
+#if CUBEMAP
+		uniform sampler2D cubeMap : register(s3),
+#endif
+
+#if CHARACTER
+		float3 inNormal : TEXCOORD1,
+		float4 inUv : TEXCOORD2,
+		float3 inViewTangent : TEXCOORD3,
+		float3 inViewBiTangent : TEXCOORD4,
+#elif SIMPLE
+		float3 inNormal : TEXCOORD1,
+		float4 inUv : TEXCOORD2,
+
+#else
+		float4 inWorldPos : TEXCOORD2,
+		float4 textureAtlasOffset : TEXCOORD3,
+		float4 inRealUv : TEXCOORD4,
+		
+#endif
+		
+		out float4 oColor0 : COLOR0,
+		out float4 oColor1 : COLOR1
+		)
+{
+
+
+  float3 diffuseSample;
+
+#define PARALLAX_MAPPING 1
+
+  float clipDistance = farClip - nearClip;
+
+#if SIMPLE
+ 
+#elif (!CHARACTER && !SIMPLE)
+
+  float3 T = normalize(ddx(inViewPos.xyz));
+ 
+  float3 B = normalize(ddy(inViewPos.xyz));
+  float3 vNormal = cross(B, T);
+  B = cross(T, vNormal);
+  float3x3 tbnToViewMat = float3x3(T, B, vNormal);
+#else
+  float3 T = inViewTangent;
+  float3 B = inViewBiTangent;
+  float3 vNormal = inNormal;
+  float3x3 tbnToViewMat = float3x3(T, B, vNormal);
+#endif
+
+
+#if SIMPLE
+  float3 normal = inNormal;
+  float4 textureAtlasOffset = inUv;
+
+#elif (!CHARACTER && !SIMPLE)
+  float3 normal;
+  float3 uv0;
+  float4 dxdy;
+  ComputeBlockUV(normal, inWorldPos, uv0, dxdy);
+
+  //uv0 = clamp(uv0, 0.0, 0.9);
+
+  //uv0.xy = inRealUv.xy;
+
+  float2 pwrs = float2(8, 8); //assuming 256 for each tile.
+
+  float pwr = min(pwrs.x, pwrs.y) - 2;
+  float2 tileSize = pow(float2(2.0, 2.0), pwrs);
+
+  float lod = clamp(ComputeMipLevel(uv0, tileSize), 0, pwr);
+
+  float mipSize = pow(2.0, pwr - lod);
+  float2 lodSizeInv = tileSize / (mipSize * ATLAS_WIDTH);
+  //float sze = mipSize / (256.0 / 4096.0);
+
+
+  //textureAtlasOffset.xy += 
+
+
+  //textureAtlasOffset.xy = textureAtlasOffset.xy  + float4(uv0.xy * 0.5, 0.0, 0.0) * eOffset;
+  //textureAtlasOffset.xy += uv0 * 0.5 * eOffset;//float4(uv0 * 0.5, 0.0, 0.0) * eOffset;
+  textureAtlasOffset.xy = (uv0 * 0.5) * ((tileSize / ATLAS_WIDTH) - lodSizeInv) + (0.5 * lodSizeInv) + textureAtlasOffset.xy;
+
+  //textureAtlasOffset.xy += (uv0.xy * 0.5);// * (eOffset - (0.5 / ATLAS_WIDTH));
+
+  //textureAtlasOffset.xy += uv0 * ((size * eOffset - 1.0) / size) + (0.5 / size);// + textureAtlasOffset.xy;
+  
+
+
+  //textureAtlasOffset += float4(uv0, 0.0, 0.0) * eOffset;
+  //textureAtlasOffset.xy = uv0;// + (1.0 /  TEX_WIDTH);
+#else
+  float3 normal = float3(0, 0, 0);
+  float4 textureAtlasOffset = inUv;
+#endif
+  float2 blah = textureAtlasOffset.xy;
+
+#if SIMPLE
+  float specularMod = 0.001;
+  
+  float4 tempDiffuseSample = tex2D(diffuseMap, textureAtlasOffset.xy);
+  if(tempDiffuseSample.a < 0.9)
+    discard;
+
+  diffuseSample = tempDiffuseSample.xyz;
+
+  //diffuseSample = float3(1.0, 0.0, 0.0);
+#elif (!CHARACTER && !SIMPLE) 
+  float4 textureAtlasOffsetOld = textureAtlasOffset;
+  //textureAtlasOffset.xy = ComputeParallaxUV(mul(tbnToViewMat, normalize(inViewPos.xyz)), textureAtlasOffset.xy, normalMap, 0.01, dxdy);
+  //normal = Tex2DAtlas(normalMap, textureAtlasOffset.xy, dxdy).xyz * 2.0 - 1.0;//textureAtlasOffset.xy).xyz;
+  normal = Tex2DAtlasMip(normalMap, textureAtlasOffset.xy, lod).xyz * 2.0 - 1.0;//textureAtlasOffset.xy).xyz;
+  //normal = Tex2DAtlas(normalMap, uv0 * eOffset, textureAtlasOffset).xyz * 2.0 - 1.0;//textureAtlasOffset.xy).xyz;
+  //normal = tex2D(normalMap, textureAtlasOffset.xy) * 2.0 - 1.0;
+  
+  normal.y = -normal.y;
+  //diffuseSample = Tex2DAtlas(diffuseMap, textureAtlasOffset.xy, dxdy);
+  diffuseSample = Tex2DAtlasMip(diffuseMap, textureAtlasOffset.xy, lod).xyz;
+  
+  //diffuseSample = float3(uv0.xy, 0.0);
+
+
+  //diffuseSample = float3(uv0.xy, 0);
+  //diffuseSample = Tex2DAtlas(diffuseMap, uv0, textureAtlasOffset).xyz;
+  //diffuseSample = tex2D(diffuseMap, textureAtlasOffset.xy);
+  //float specularMod = Tex2DAtlas(specularMap , uv0 * eOffset, textureAtlasOffset).x;
+  float specularMod = 1.0;
+  specularMod = Tex2DAtlasMip(specularMap, textureAtlasOffsetOld.xy, lod).x;
+#elif (CHARACTER) && (!CUBEMAP)
+  textureAtlasOffset.xy = ComputeParallaxUVNoAtlas(mul(tbnToViewMat, normalize(inViewPos.xyz)), textureAtlasOffset.xy, normalMap, 0.01);
+  
+  //diffuseSample = Tex2DAtlas(diffuseMap, textureAtlasOffset.xy).xyz;
+  diffuseSample = tex2D(diffuseMap, textureAtlasOffset.xy).xyz;
+  //diffuseSample = float3(1.0, 0.0, 0.0);
+  float specularMod = 0.0;
+
+#if !NOSPECULAR
+  specularMod = tex2D(specularMap, textureAtlasOffset.xy).x;
+#endif  
+//float specularMod = 0.01;
+  normal = tex2D(normalMap, textureAtlasOffset.xy).xyz * 2.0 - 1.0;//textureAtlasOffset.xy).xyz;
+  normal.y = -normal.y;
+  //normal = float3(1.0, 1.0, 0.0);
+
+
+#endif //end if all
+
+  //float specularMod = 0.001;
+#if SIMPLE
+  half2 encodedNormal = encode(normal);
+#else
+  half2 encodedNormal = encode(normalize(half3(mul(normal, tbnToViewMat))));
+  //half2 encodedNormal = encode(normal);
+#endif
+  oColor0 = float4(encodedNormal, specularMod, inViewPos.z / farClip);
+  //oColor0 = float4(mul(normal, tbnToViewMat), inViewPos.z / farClip);
+  oColor1 = float4(diffuseSample, 1.0);
+}
+
+void HWBasic_vs(
+		float4 position : POSITION,
+		float3 normal : NORMAL,
+		float2 uv0 : TEXCOORD0,
+		float4 mat14 : TEXCOORD1,
+		float4 mat24 : TEXCOORD2,
+		float4 mat34 : TEXCOORD3,
+		out float4 oPosition : POSITION,
+		out float2 oUv0 : TEXCOORD0,
+		uniform float4x4 vpMat
+		)
+{
+  float3x4 worldMatrix;
+  worldMatrix[0] = mat14;
+  worldMatrix[1] = mat24;
+  worldMatrix[2] = mat34;
+
+  oPosition = mul(vpMat, float4(mul(worldMatrix, position).xyz, 1.0f));
+  oUv0 = uv0;
+}
+
+void HWBasic_ps(
+		float2 inUv0 : TEXCOORD0,
+		uniform sampler2D diffuseMap : register(s0),
+		out float4 oColor0 : COLOR0
+		)
+{
+  float4 tex = tex2D(diffuseMap, inUv0);
+  oColor0 = float4(tex.xyz, 0.5);
+  //oColor0 = float4(0.109 + colorDelta.x, 0.417, 0.625, 1.0);
+}
+
+
+void LightBuffer_vs(
+		    float4 position : POSITION,
+		    uniform float4 lightPosView,
+		    uniform float4x4 vMat,
+		    out float4 olightPosView : TEXCOORD1,
+#if !DIRECTIONAL
+#if FUCKED
+		    float4 mat14 : TEXCOORD1,
+		    float4 mat24 : TEXCOORD2,
+		    float4 mat34 : TEXCOORD3,
+#else
+#endif 
+		    //!directional !fucked
+		    
+		    uniform float4x4 vpMat,		    
+		    uniform float4x4 wvpMat,
+		    uniform float4x4 wvMat,
+#else
+		    //directional
+		    uniform float4x4 wvpMat,
+		    uniform float4x4 wvMat,
+		    uniform float4 dirLightWorld,
+#endif
+		    //uniform float4x4 wvpMat,
+		    
+		    //uniform float4x4 wvMat,
+		    
+		    //uniform float4 lightPosView,
+		    
+		    out float4 oPosition : POSITION,
+		    out float4 oViewPos : TEXCOORD0_centroid
+		    
+		    )
+{
+#if !DIRECTIONAL
+#if fucked
+  float3x4 worldMatrix;
+  worldMatrix[0] = mat14;
+  worldMatrix[1] = mat24;
+  worldMatrix[2] = mat34;
+
+  //float4 lightPos = float4(worldMatrix._14_24_34, 1.0);
+  float4 lightPos = float4(mul(worldMatrix, float3(0.0, 0.0, 0.0)).xyz, 1.0f);
+  float4 pos = float4(mul(worldMatrix, position).xyz, 1.0f);
+  olightPosView = mul(vMat, lightPos);
+  oPosition = mul(vpMat, pos);
+  oViewPos = mul(vMat, pos);
+#else
+  //float4 pos = mul(wvMat, float4(0.0, 0.0, 0.0, 1.0));
+  //olightPosView = pos;
+  olightPosView = mul(vMat, lightPosView);
+  olightPosView.xyz = olightPosView.xyz;
+  oPosition = mul(wvpMat, position);
+  oViewPos = mul(wvMat, position);
+#endif
+#else
+  oPosition = mul(wvpMat, position);
+  oViewPos = mul(wvMat, position);
+  //olightPosView = mul(vMat, lightPosView);
+  //olightPosView = mul(vMat, float4(dirLightWorld, 0));
+  olightPosView = dirLightWorld;
+#endif
+
+  
+
+}
+
+void LightBuffer_ps(
+		    float4 screenPos : VPOS,
+		    float4 inViewPos : TEXCOORD0,
+		    uniform float4 texDim,
+		    float4 inLightPosView : TEXCOORD1,
+#if DIRECTIONAL
+		    uniform sampler2D hfaoBuffer : register(s2),
+		    uniform float uLightY,
+		    
+#endif
+		    uniform float farClip,
+		    uniform sampler2D gBuffer : register(s0),
+		    uniform sampler2D gBuffer1 : register(s1), //This is used to store position
+		    out float4 oColor0 : COLOR0
+		    )
+{
+  float4 lightColor = float4(0.89, 0.89, 0.9, 1.0);
+  const float4 attFactor = float4(1.0f, 0.35f, 0.44f, 0.0f);
+  //compute the G buffer position.
+
+  float2 texCoord = screenPos.xy / texDim.xy;
+
+  float4 gBPixel = tex2D(gBuffer, texCoord.xy);
+  float specularMod = gBPixel.z;
+
+#if DIRECTIONAL
+  float hfaoFactor = tex2D(hfaoBuffer, texCoord.xy).x;
+#endif
+
+
+  gBPixel.xyz = decode(gBPixel);
+  
+  float specularPower = 128.0;
+
+  float3 viewRay = float3(inViewPos.xy * (farClip / inViewPos.z), farClip);
+ 
+  float3 viewPos = viewRay * gBPixel.w;
+
+  
+
+  //now compute light terms for point light
+#if !DIRECTIONAL
+  
+  float3 lightDir = (inLightPosView.xyz - viewPos);// * InvSqrLightRange;
+  float d = length(lightDir);
+  float C = 1.0 / (attFactor.x + attFactor.y * d + attFactor.z * d * d);
+  
+#else
+  float3 lightDir = inLightPosView.xyz; 
+  
+  float C = 1.0;
+#endif  
+  lightDir = normalize(lightDir); 
+
+ 
+#if !DIRECTIONAL
+  float lightPower = 2.0;
+  float3 diffuse = float3(0, 0, 0);
+  float specular = 0;
+  //oColor0 = ComputeBlinnPhongSpecular(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, specularMod, specularPower, C);
+  //oColor0.xyz = float3(0, 0, 0);
+  //specular = 0;
+  specular = SpecularBlinnPhong(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, specularMod, specularPower, C);
+  diffuse = ComputeOrenNayar(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, 1.0 - specularMod, C);
+  //diffuse = float3(0, 0, 0);
+  //oColor0 = ComputeTriaceShading(gBPixel.xyz, lightDir, viewPos, lightColor, specularMod, specularPower, C);
+  oColor0 = float4(diffuse, specular) * lightPower;
+  //oColor0 = ComputeBlinnPhongSpecular(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, specularMod, specularPower, C) * lightPower;
+#else
+  float nightMulti = 1.0;
+  float3 diffuse = float3(0, 0, 0);
+  float specular = 0;
+  float4 diffuseSpec;
+  if(uLightY <= 0.0f)
+    {
+      nightMulti = 0.001;
+      //specular *= nightMulti;
+      lightColor.xyz = float3(0.3, 0.41, 0.53);
+      specular = SpecularBlinnPhong(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, specularMod, specularPower, 1.0);
+      diffuse = ComputeOrenNayar(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, 1.0 - specularMod, 1.0);
+      //diffuseSpec = ComputeBlinnPhongSpecular(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, specularMod, specularPower, C);
+    }
+  else
+    {
+      specular = SpecularBlinnPhong(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, specularMod, specularPower, 1.0);
+      //diffuse = ComputeOrenNayar(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, 1.0 - specularMod, 1.0);
+      //nightMulti = 0.0001;
+      //diffuse = float3(0, 0, 0);
+      //diffuse = ComputeOrenNayar(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, 1.0 - specularMod, C);
+      //specular = 0.0;
+      //diffuseSpec = ComputeBlinnPhongSpecular(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, specularMod, specularPower, C);
+    }
+
+  //diffuse = float3(0, 0, 0);
+  //specular = 0;
+  
+ 
+  //oColor0 = ComputeBlinnPhongSpecular(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, specularMod, specularPower, C);
+  
+  
+   
+  
+  //float3 diffuse = ComputeOrenNayar(gBPixel.xyz, lightDir, viewPos, lightColor.xyz, 1.0 - specularMod, C) * nightMulti * hfaoFactor;
+  //oColor0 = float4(diffuse, specular * nightMulti);
+  oColor0 = float4(diffuse,  specular) * nightMulti * hfaoFactor;
+  //oColor0 = diffuseSpec;
+#endif
+}
+
+
+void shadow_caster_vs(
+	float4 position			: POSITION,
+	uniform float4 depthRange,
+	out float4 oPosition	: POSITION,
+	out float oDepth		: TEXCOORD0,
+
+	uniform float4x4 wvpMat)
+{
+	// this is the view space position
+	oPosition = mul(wvpMat, position);
+
+	oDepth = (oPosition.z - depthRange.x) * depthRange.w;
+}
+
+void shadow_caster_ps(
+			float depth		: TEXCOORD0,
+
+	out float4 oColour	: COLOR
+
+	//uniform float4 pssmSplitPoints)
+		      )
+{
+  oColour =  float4(depth.xxx, 1);
+    //float finalDepth = depth.x / depth.y;
+    //	finalDepth = finalDepth + 0.5;
+    //oColour = float4(finalDepth, finalDepth , finalDepth, 1);
+}
+
+VS_OUT main_vp(
+	       float4 pos : POSITION,
+#if TEXTURE_ATLAS
+	       float4 colour : COLOR,
+#endif
+	       float4 uv1 : TEXCOORD0,
+	       
+#if !TEXTURE_ATLAS
+	       float3 normal : NORMAL,
+	       float3 tangent : TANGENT0,
+#endif
+	       uniform float4x4 worldViewProj,
+	       uniform float4 lightPosition,
+	       uniform float3 eyePosition,
+	       uniform float4x4 texWorldViewProjMatrix0,
+	       uniform float4x4 texWorldViewProjMatrix1,
+	       uniform float4x4 texWorldViewProjMatrix2,
+	       uniform float4 depthRange0,
+	       uniform float4 depthRange1,
+	       uniform float4 depthRange2
+#if CUBEMAP
+	       , uniform float4x4 worldMat
+	       , out float3 oViewDirectionWorld : TEXCOORD7
+#endif
+	       //uniform float4 depthRange0,
+	       //uniform float4 depthRange1,
+	       //uniform float4 depthRange2
+	       )
+{
+
+  
+  
+#if TEXTURE_ATLAS
+  VS_OUT outp;
+  outp.pos = mul(worldViewProj, pos);
+  outp.colour = colour;
+  outp.worldPos = pos + float4(0.5f, 0.5f, 0.5f, 0.5f);
+  outp.textureAtlasOffset = float4(0.0f, 0.0f, 0.0f, 0.0f);
+ 
+  //float idx = uv1.x * 256.0 -1;
+  //float idx = 13.0f;
+  //float blocky = floor(idx / 16.0);
+  //float blockx = (idx - blocky * 16.0);
+  //float2 blockCoords;
+  //ComputeBlockXY(uv1.x, blockCoords); 
+  //outp.textureAtlasOffset = float4(blockCoords.x + 0.25f, blockCoords.y + 0.25f, 0, 0) * eOffset;
+  outp.textureAtlasOffset = float4(0, 0, 0, 0);
+#else
+  VS_OUT outp;
+  outp.colour = float4(1.0, 1.0, 1.0, 1.0);
+  outp.pos = mul(worldViewProj, pos);
+  outp.worldPos = float4(normal, 1.0);
+  outp.textureAtlasOffset = uv1;
+
+#if CUBEMAP
+  float4 worldPos = mul(worldMat, pos);
+  oViewDirectionWorld = normalize(worldPos.xyz - eyePosition);
+#endif
+
+#endif
+  //Pack outp.z into textureAtlasOffset.z
+  outp.textureAtlasOffset.z = outp.pos.z;
+  //compute lighting information
+  //outp.oLightDir = normalize(lightPosition.xyz - (pos * lightPosition.w).xyz);
+  
+  //compute half-angle in tangent space
+  //float3 eyeDir = normalize(eyePosition - pos.xyz);
+  //outp.oHalfAngle = normalize(eyeDir + outp.oLightDir);
+  
+  //compute the position of vertex in light space
+  //Here we texWorldViewProjMatrix is really texture_viewproj. And the point we are transform is the world space coordinate of the position.
+  //We need to transform the position from local space into world space, since the terrain is defined as patches.
+  //outp.oLightPosition0 = mul(texWorldViewProjMatrix0, pos);
+  //outp.oLightPosition1 = mul(texWorldViewProjMatrix1, pos);
+  //outp.oLightPosition2 = mul(texWorldViewProjMatrix2, pos);
+  
+  //const float depthBias0 = 0.005;
+  //const float depthBias1 = 0.009;
+  //const float depthBias2 = 0.009;
+  //make linear
+  //outp.oLightPosition0.z = (outp.oLightPosition0.z - depthBias0 - depthRange0.x) * depthRange0.w;// + depthBias;
+  //outp.oLightPosition1.z = (outp.oLightPosition1.z - depthBias1 - depthRange1.x) * depthRange1.w;
+  //outp.oLightPosition2.z = (outp.oLightPosition2.z - depthBias2 - depthRange2.x) * depthRange2.w;
+
+  return outp;
+}
+
+float shadowPCF(sampler2D shadowMap, float4 shadowMapPos, float2 offset, float2 texelOffsets)
+{
+  //shadowMapPos = shadowMapPos / shadowMapPos.w;
+  //const float2 texelOffset = float2(0.5, 0.5);
+  float4 uv = (shadowMapPos.xy / shadowMapPos.w + texelOffsets * offset).xyyy;
+  float3 o = float3(offset, -offset.x) * 0.3f;
+	
+	//return tex2D(shadowMap, shadowMapPos).x;
+	
+	// Note: We using 2x2 PCF. Good enough and is alot faster.
+	//float c =	(shadowMapPos.z <= tex2D(shadowMap, uv.xy - o.xy).r) ? 1 : 0; // top left
+	//c +=		(shadowMapPos.z <= tex2D(shadowMap, uv.xy + o.xy).r) ? 1 : 0; // bottom right
+	//c +=		(shadowMapPos.z <= tex2D(shadowMap, uv.xy + o.zy).r) ? 1 : 0; // bottom left
+	//c +=		(shadowMapPos.z <= tex2D(shadowMap, uv.xy - o.zy).r) ? 1 : 0; // top right
+	//float c =	(shadowMapPos.z <= tex2D(shadowMap, uv.xy - o.xy).r) ? 1 : 0; // top left
+	//c +=		(shadowMapPos.z <= tex2D(shadowMap, uv.xy + o.xy).r) ? 1 : 0; // bottom right
+	//c +=		(shadowMapPos.z <= tex2D(shadowMap, uv.xy + o.zy).r) ? 1 : 0; // bottom left
+	//c +=		(shadowMapPos.z <= tex2D(shadowMap, uv.xy - o.zy).r) ? 1 : 0; // top right
+	float c =	(shadowMapPos.z <= tex2Dlod(shadowMap, uv - o.xyyy).r) ? 1 : 0; // top left
+	c +=		(shadowMapPos.z <= tex2Dlod(shadowMap, uv + o.xyyy).r) ? 1 : 0; // bottom right
+	c +=		(shadowMapPos.z <= tex2Dlod(shadowMap, uv + o.zyyy).r) ? 1 : 0; // bottom left
+	c +=		(shadowMapPos.z <= tex2Dlod(shadowMap, uv - o.zyyy).r) ? 1 : 0; // top right
+	return c / 4;
+  //float c = (shadowMapPos.z <= tex2Dlod(shadowMap, uv).r) ? 1 : 0;
+  //return c;
+}
+
+
+float4 main_fp(
+	       VS_OUT In,
+	       float4 screenPos : VPOS,
+	       //#if 1
+	       uniform float SHC_R_0,
+	       uniform float SHC_R_1,
+	       uniform float SHC_R_2,
+	       uniform float SHC_R_3,
+	       uniform float SHC_R_4,
+	       uniform float SHC_R_5,
+	       uniform float SHC_R_6,
+	       uniform float SHC_R_7,
+	       uniform float SHC_R_8, 
+#if FULLBAND
+	       uniform float SHC_R_9, 
+	       uniform float SHC_R_10,
+	       uniform float SHC_R_11, 
+	       uniform float SHC_R_12, 
+	       uniform float SHC_R_13, 
+	       uniform float SHC_R_14, 
+	       uniform float SHC_R_15, 
+	       uniform float SHC_R_16, 
+	       uniform float SHC_R_17,
+#endif
+	       uniform float SHC_G_0,
+	       uniform float SHC_G_1,
+	       uniform float SHC_G_2,
+	       uniform float SHC_G_3,
+	       uniform float SHC_G_4,
+	       uniform float SHC_G_5,
+	       uniform float SHC_G_6,
+	       uniform float SHC_G_7,
+	       uniform float SHC_G_8, 
+#if FULLBAND
+	       uniform float SHC_G_9, 
+	       uniform float SHC_G_10, 
+	       uniform float SHC_G_11, 
+	       uniform float SHC_G_12, 
+	       uniform float SHC_G_13, 
+	       uniform float SHC_G_14, 
+	       uniform float SHC_G_15, 
+	       uniform float SHC_G_16, 
+	       uniform float SHC_G_17,
+#endif
+	       uniform float SHC_B_0,
+	       uniform float SHC_B_1,
+	       uniform float SHC_B_2,
+	       uniform float SHC_B_3,
+	       uniform float SHC_B_4,
+	       uniform float SHC_B_5,
+	       uniform float SHC_B_6,
+	       uniform float SHC_B_7,
+	       uniform float SHC_B_8,
+#if FULLBAND 
+	       uniform float SHC_B_9, uniform float SHC_B_10, uniform float SHC_B_11, uniform float SHC_B_12, uniform float SHC_B_13, uniform float SHC_B_14, uniform float SHC_B_15, uniform float SHC_B_16, uniform float SHC_B_17,
+#endif
+	       //#endif
+	       uniform float uLightY,
+	       uniform float4 invShadowMapSize0,
+	       uniform float4 invShadowMapSize1,
+	       uniform float4 invShadowMapSize2,
+	       uniform float4 pssmSplitPoints,
+	       uniform float4 texelOffsets,
+	       uniform float4 texDim,
+	       uniform sampler2D diffuseMap : register(s3),
+#if SHADOWS
+	       uniform sampler2D shadowMap0 : register(s0),
+	       uniform sampler2D shadowMap1 : register(s1),
+	       uniform sampler2D shadowMap2 : register(s2),
+#endif
+	       //#if TEXTURE_ATLAS
+	       
+	       uniform float4x4 inverseViewMat, 
+	       //#endif
+	       //#if TEXTURE_ATLAS
+	       uniform sampler2D gBuffer : register(s4),
+	       uniform sampler2D lBuffer : register(s5),
+	       //#else
+	       //uniform sampler2D lBuffer : register(s4),
+	       //#endif
+	       uniform sampler2D ssaoBuffer : register(s6),
+	       uniform sampler2D hfaoBuffer : register(s7),
+	       uniform samplerCUBE cubeMap : register(s8)
+#if CUBEMAP
+	       //	       , uniform sampler2D cubeMap : register(s8)
+	       , float3 inViewDirectionWorld : TEXCOORD7
+#endif
+	       //uniform float4 lightDiffuse,
+	       //uniform float4 lightSpecular
+	       ) : COLOR
+{
+  
+  
+  const float C1 = 0.429043;
+  const float C2 = 0.511664;
+  const float C3 = 0.743125;
+  const float C4 = 0.886227;
+  const float C5 = 0.247708;
+  const float d1 = -0.081922;
+ const float d2 = -0.231710;
+ const float d3 = -0.061927;
+ const float d4 = -0.087578;
+ const float d5 = -0.013847;
+ const float d6 = -0.123854;
+ const float d7 = -0.231710;
+ const float d8 = -0.327688;
+ const float3 L00 = float3(SHC_R_0, SHC_G_0, SHC_B_0);
+ const float3 L1m1 = float3(SHC_R_1, SHC_G_1, SHC_B_1);
+ const float3 L10 = float3(SHC_R_2, SHC_G_2, SHC_B_2);
+ const float3 L11 = float3(SHC_R_3, SHC_G_3, SHC_B_3);
+ const float3 L2m2 = float3(SHC_R_4, SHC_G_4, SHC_B_4);
+ const float3 L2m1 = float3(SHC_R_5, SHC_G_5, SHC_B_5);
+ const float3 L20 = float3(SHC_R_6, SHC_G_6, SHC_B_6);
+ const float3 L21 = float3(SHC_R_7, SHC_G_7, SHC_B_7);
+ const float3 L22 = float3(SHC_R_8, SHC_G_8, SHC_B_8);
+
+ const float3 L00a  = float3( 0.78908,  0.43710,  0.54161);
+ const float3 L1m1a = float3( 0.39499,  0.34989,  0.60488);
+ const float3 L10a  = float3(-0.33974, -0.18236, -0.26940);
+ const float3 L11a  = float3(-0.29213, -0.05562,  0.00944);
+ const float3 L2m2a = float3(-0.11141, -0.05090, -0.12231);
+ const float3 L2m1a = float3(-0.26240, -0.22401, -0.47479);
+ const float3 L20a  = float3(-0.15570, -0.09471, -0.14733);
+ const float3 L21a  = float3( 0.56014,  0.21444,  0.13915);
+ const float3 L22a  = float3( 0.21205, -0.05432, -0.30374);
+
+#if FULLBAND
+ const float3 L4m4 = float3(SHC_R_9, SHC_G_9, SHC_B_9);
+ const float3 L4m3 = float3(SHC_R_10, SHC_G_10, SHC_B_10);
+ const float3 L4m2 = float3(SHC_R_11, SHC_G_11, SHC_B_11);
+ const float3 L4m1 = float3(SHC_R_12, SHC_G_12, SHC_B_12);
+ const float3 L40 = float3(SHC_R_13, SHC_G_13, SHC_B_13);
+ const float3 L41 = float3(SHC_R_14, SHC_G_14, SHC_B_14);
+ const float3 L42 = float3(SHC_R_15, SHC_G_15, SHC_B_15);
+ const float3 L43 = float3(SHC_R_16, SHC_G_16, SHC_B_16);
+ const float3 L44 = float3(SHC_R_17, SHC_G_17, SHC_B_17);
+#endif
+ //float shadowing = 1.0f;
+ float4 splitColour = float4(0, 0, 0, 0);
+ float shadowing = 1.0;
+ float camDepth = In.textureAtlasOffset.z;
+ 
+#if SHADOWS
+ if(camDepth <= pssmSplitPoints.y)
+   {
+     splitColour = float4(0.3, 0, 0, 0);
+     shadowing = shadowPCF(shadowMap0, In.oLightPosition0, invShadowMapSize0.xy, texelOffsets.xy);
+   }
+ else if(camDepth <= pssmSplitPoints.z)
+   {
+     //splitColour = float4(0, 0.9, 0, 1);
+     shadowing = shadowPCF(shadowMap1, In.oLightPosition1, invShadowMapSize1.xy, texelOffsets.xy);
+   }
+ else
+   {
+     //splitColour = float4(0, 0, 0.9, 1);
+     shadowing = shadowPCF(shadowMap2, In.oLightPosition2, invShadowMapSize2.xy, texelOffsets.xy);
+   }
+#endif
+
+ float2 texCoord = screenPos.xy / texDim.xy;
+
+ float3 normal2 = decode(tex2D(gBuffer, texCoord));
+ normal2 = mul(inverseViewMat, float4(normal2, 0.0)).xyz;
+
+#if CUBEMAP
+
+ //use normal2 which is now in world space and also derive view dir in world space.
+ float3 reflectVec = reflect(inViewDirectionWorld, normal2);
+ float4 texCubemap = texCUBE(cubeMap, reflectVec);
+
+#endif
+
+ 
+#if TEXTURE_ATLAS 
+ 
+ float3 n = float3(-normal2.z, -normal2.x, normal2.y);
+#else
+ 
+ float3 n = float3(-normal2.z, -normal2.x, normal2.y);
+#endif
+
+
+
+  float4 diffuseColor = float4(1.0, 1.0, 1.0, 1.0);
+
+  diffuseColor.xyz =  C1 * L22 * (n.x * n.x - n.y * n.y) +
+                      C3 * L20 * n.z * n.z +
+                      C4 * L00 -
+                      C5 * L20 +
+                      2.0 * C1 * L2m2 * n.x * n.y +
+                      2.0 * C1 * L21  * n.x * n.z +
+                      2.0 * C1 * L2m1 * n.y * n.z +
+                      2.0 * C2 * L11  * n.x +
+                      2.0 * C2 * L1m1 * n.y +
+    2.0 * C2 * L10  * n.z
+#if FULLBAND
++
+    d1 * L4m4 * (n.x*n.x*(n.x*n.x-3.0*n.y*n.y) - n.y*n.y * (3.0*n.x*n.x-n.y*n.y)) +
+    d2 * L4m3 * (n.x*n.z*(n.x*n.x-3.0*n.y*n.y)) +
+    d3 * L4m2 * ((n.x*n.x-n.y*n.y)*(7.0*n.z*n.z-1.0)) + 
+    d4 * L4m1 * ((n.x*n.z*(7.0*n.z*n.z-3.0))) + 
+    d5 * L40 * (35.0*n.z*n.z*n.z*n.z - 30.0*n.z*n.z + 3.0) + 
+    d4 * L41 * (n.y*n.z*(7.0*n.z*n.z-3.0)) + 
+    d6 * L42 * (n.x*n.y*(7.0*n.z*n.z-1.0)) + 
+    d7 * L43 * (n.y*n.z*(3.0*n.x*n.x-n.y*n.y)) + 
+    d8 * L44 * (n.x*n.y*(n.x*n.x-n.y*n.y));
+#else
+  ;
+#endif
+
+  float4 diffuseColor2;
+  diffuseColor2.xyz = C1 * L22a * (n.x * n.x - n.y * n.y) +
+                      C3 * L20a * n.z * n.z +
+                      C4 * L00a -
+                      C5 * L20a +
+                      2.0 * C1 * L2m2a * n.x * n.y +
+                      2.0 * C1 * L21a  * n.x * n.z +
+                      2.0 * C1 * L2m1a * n.y * n.z +
+                      2.0 * C2 * L11a  * n.x +
+                      2.0 * C2 * L1m1a * n.y +
+    2.0 * C2 * L10  * n.z;
+
+#if TEXTURE_ATLAS
+ float4 lPixel = tex2D(lBuffer, texCoord);
+ float hfaoFactor = tex2D(hfaoBuffer, texCoord).x;
+ float ssaoFactor = tex2D(ssaoBuffer, texCoord).x;
+ //float hfaoFactor = tex2D(ssaoBuffer, texCoord).x;
+#else
+ float4 lPixel = tex2D(lBuffer, texCoord);
+ float hfaoFactor = tex2D(hfaoBuffer, texCoord).x;//tex2D(hfaoBuffer, texCoord).x;// * tex2D(ssaoBuffer, texCoord).x;
+ float ssaoFactor = tex2D(ssaoBuffer, texCoord).x;
+ 
+#endif
+
+ 
+
+#if TEXTURE_ATLAS
+
+  float4 texDiffuse = tex2D(diffuseMap, texCoord.xy);
+  //texDiffuse = float4(1.0, 1.0, 1.0, 1.0);
+ 
+#else
+  float4 texDiffuse = tex2D(diffuseMap, texCoord.xy);
+#endif
+  float3 specularColour = float3(1.0, 1.0, 1.0);
+#if TEXTURE_ATLAS
+
+  //In.colour.xyz = clamp(In.colour.xyz, 0.005, 1.0);
+  //shadowing = (dot(normal, lightVec) <= 0.001) ? 0.5 : clamp(shadowing, 0.5, 1.0);
+  //shadowing = (In.colour.x < 0.5) ? 1.0 : shadowing; 
+  diffuseColor.xyz *= In.colour.xyz;
+#endif
+
+  //float4 lighting = lit(dot(normal, lightVec), dot(normal, halfAngle), shininess * 1.0) * shadowing; 
+  
+  float nightMulti;
+  nightMulti = 1.0;
+
+  //Use lBuffer to modify diffuseColor
+  
+  //diffuseColor.xyz *= hfaoFactor; //multiply by HFAO occlusion factor
+  //diffuseColor.xyz *= ssaoFactor;
+  
+
+  
+#if TEXTURE_ATLAS
+
+  if(uLightY < 0.0)//was 0.007, 0.010
+    {
+    //nightMulti = lerp(0.1, 0.011, -uLightY);
+    //nightMulti = lerp(0.5, 0.011, -uLightY);
+      nightMulti = 1.0 / (1.0 + -uLightY) * 0.007;
+    }
+  
+#else
+  if(uLightY < 0.0)//was 0.007, 0.010
+    {
+    //nightMulti = lerp(0.1, 0.011, -uLightY);
+    //nightMulti = lerp(0.5, 0.011, -uLightY);
+      nightMulti = (1.0 / (1.0 + -uLightY) ) * 0.007;// * 16.0;
+    }
+ 
+#endif
+
+  //diffuseColor.xyz *= 0.000175; //0.0001 is good 0.000198 is good
+  //diffuseColor.xyz *= 0.000275; //0.0001 is good 0.000198 is good
+  
+
+#if TEXTURE_ATLAS
+  float shScale = 0.0001;
+  float stepv = smoothstep(0.005, 0.05, hfaoFactor);
+  diffuseColor.xyz = (1.0 - stepv)*diffuseColor2.xyz + stepv*diffuseColor.xyz;
+  
+  diffuseColor.xyz = texDiffuse.xyz * diffuseColor.xyz * shScale * hfaoFactor * nightMulti + texDiffuse.xyz * (lPixel.xyz + lPixel.xyz);
+  
+  //diffuseColor.xyz += lPixel.xyz + lPixel.www;// + lPixel.www;
+#else
+  //float shScale = 0.000025;
+  float shScale = 0.000015; 
+  //was 0.005 and 0.1
+  float stepv = smoothstep(0.005, 0.2, hfaoFactor);
+   //diffuseColor.xyz = diffuseColor.xyz;
+  diffuseColor.xyz = (1.0 - stepv)*diffuseColor2.xyz * 0.00005 + stepv*diffuseColor.xyz * shScale; //note here 0.8 is shScale for diffuseColor2.
+   //diffuseColor.xyz = diffuseColor.xyz * hfaoFactor * 0.08 * nightMulti; //note here 0.8 is shScale for diffuseColor2.
+   //diffuseColor.xyz *= nightMulti;
+   //diffuseColor.xyz = (diffuseColor.xyz * hfaoFactor * nightMulti + lPixel.www + lPixel.xyz);// + lPixel.www;
+  //diffuseColor.xyz = texDiffuse.xyz * (lPixel.www + lPixel.xyz);
+
+  //float3 specC = float3(0.672411, 0.637331, 0.585456);
+  //float3 specC = float3(1, 0.765557, 0.336057); //gold
+  //float3 specC = float3(0.549585, 0.556114, 0.554256); //chrome
+  //texDiffuse.xyz = specC;
+  //diffuseColor.xyz = texDiffuse.xyz * diffuseColor.xyz * hfaoFactor * nightMulti 
+  //+ texDiffuse.xyz *  lPixel.xyz + specC * lPixel.www;// * ssaoFactor;// + lPixel.www;
+  //diffuseColor.xyz = texDiffuse.xyz * (lPixel.www + lPixel.xyz);// * ssaoFactor;// + lPixel.www;
+#if CUBEMAP
+  texDiffuse.xyz = lerp(texDiffuse.xyz, texCubemap.xyz, 0.1);
+  diffuseColor.xyz = (texDiffuse.xyz * diffuseColor.xyz * hfaoFactor * nightMulti)
+    + texDiffuse.xyz * (lPixel.xyz + lPixel.www);
+#endif
+
+
+#endif
+
+
+  //specularColour = specularColour * lPixel.xxx;
+  
+  //#endif
+  //Something with shadowing is causing darken shit.
+  //float4 vColor = float4(lPixel.xyz, lPixel.w);
+   float4 vColor = float4(diffuseColor.xyz, 1.0);//texDiffuse.w); 
+  //float4 vColor = float4(texDiffuse.xyz * nightMulti * hfaoFactor * (diffuseColor.xyz), 1.0);//texDiffuse.w);
+  //float4 vColor = float4(diffuseColor.xyz * shadowing, 1.0);//texDiffuse.w);
+  //float4 vColor = float4(texDiffuse.xyz * lPixel.yzw, 1.0);//texDiffuse.w);
+  //float4 vColor = float4(diffuseColor.xyz * shadowing + specularColour, 1.0);//texDiffuse.w);
+  //float4 vColor = float4(pow(float3(texDiffuse.xyz * diffuseColor.xyz * shadowing + specularColour), 1.0 / 2.2), 1.0);
+  //float4 vColor = float4(hfaoFactor.xxx, 1.0);
+  //float4 vColor = hfaoFactor2;
+  //float4 vColor = float4(ssaoFactor * hfaoFactor, 0.0, 0.0, 1.0);
+  //float4 vColor = float4(diffuseColor.xyz, 1.0);
+  return vColor;// + float4(splitColour.xyz, 1.0);
+}
+
+void geom_vs(
+	     in float4 p : POSITION, 
+	     out float4 cp : POSITION,
+	     out float4 vp : TEXCOORD0,
+	     uniform float4x4 wvpMat, uniform float4x4 worldview)
+{
+  cp = mul(wvpMat, p);
+
+  vp = p + float4(0.5f, 0.5f, 0.5f, 0.5f);
+
+  //vp = mul(worldview, p + );
+
+}
+
+struct geomOut
+{
+	float4 c : COLOR0;
+};
+
+geomOut geom_ps(
+		in float4 vp : TEXCOORD0, uniform float far,
+		uniform float near
+	       )
+{
+  geomOut OUT;
+  //float coeff = 0.75;//0.25;//0.25;
+  float coeff = 1.0;
+  //float coeff = 0.25;
+  float3 normal = cross(ddy(vp.xyz), ddx(vp.xyz));
+  normal = normalize(normal);
+  //float3 temp = far;
+  //temp = 0;
+  float depthRange = far - near;
+  //div by far
+  OUT.c = float4(length(vp.xyz) * coeff / depthRange, normal);
+
+  return OUT;
+}
+
+
+void debug_shadow_vp(
+		     in float4 pos : POSITION,
+		     in float4 uv0 : TEXCOORD0,
+		     out float4 oPos : POSITION,
+		     out float4 oUv0 : TEXCOORD0,
+		     out float4 oLightPosition0 : TEXCOORD1,
+		     out float4 oLightPosition1 : TEXCOORD2,
+		     out float4 oLightPosition2 : TEXCOORD3,
+		     uniform float4x4 worldViewProj,
+		     uniform float4x4 texWorldViewProjMatrix0,
+		     uniform float4x4 texWorldViewProjMatrix1,
+		     uniform float4x4 texWorldViewProjMatrix2
+		     )
+{
+  oPos = mul(worldViewProj, pos);
+  oUv0 = uv0;
+  oUv0.z = oPos.z;
+  oLightPosition0 = mul(texWorldViewProjMatrix0, pos);
+  oLightPosition1 = mul(texWorldViewProjMatrix1, pos);
+  oLightPosition2 = mul(texWorldViewProjMatrix2, pos);
+}
+
+float4 debug_shadow_fp(
+		       in float4 uv0 : TEXCOORD0,
+		       in float4 lightSpacePos0 : TEXCOORD1,
+		       in float4 lightSpacePos1 : TEXCOORD2,
+		       in float4 lightSpacePos2 : TEXCOORD3,
+		       uniform float4 pssmSplitPoints,
+		       //uniform float4 invShadowMapSize0,
+		       //uniform float4 invShadowMapSize1,
+		       //uniform float4 invShadowMapSize2,
+		       uniform sampler2D shadowMap0 : register(s0),
+		       uniform sampler2D shadowMap1 : register(s1),
+		       uniform sampler2D shadowMap2 : register(s2),
+		       uniform sampler2D diffuseMap : register(s3)
+		       ) : COLOR
+{
+  float4 tex = tex2D(shadowMap0, uv0.xy);
+  float4 retColor = float4(tex.xyz, 1.0);
+  //retColor = float4(.x, 0.0, 0.0, 1.0);
+  //float3 vColor3 = calcPSSMDebugShadow(shadowMap0, shadowMap1, shadowMap2,
+  //		       lightSpacePos0, lightSpacePos1, lightSpacePos2,
+  //		       invShadowMapSize0, invShadowMapSize1, invShadowMapSize2,
+  //			       pssmSplitPoints, uv0.z);
+  //retColor.xyz = float3(1.0, 0.0, 0.0);
+  //retColor.xyz = float3(uv0.xy, 0.0);
+  //float4 retColor = float4(vColor3, 1.0);
+  return retColor;
+}

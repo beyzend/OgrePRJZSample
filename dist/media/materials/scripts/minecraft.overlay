@@ -1,0 +1,14 @@
+PRJZ/DebugOverlay
+{
+	//zorder 200
+	//container Panel(PRJZ/DebugPanel)
+	//{
+		//left 0
+		//top 0
+		//width 0.45
+		//height 0.45
+		//uv_coords 0.0 0.0 1.0 1.0
+		//material PRJZ/
+	//}
+
+}

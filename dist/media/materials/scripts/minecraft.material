@@ -1,0 +1,873 @@
+material Examples/Ninja
+{
+	technique
+	{
+		pass
+		{
+
+			texture_unit
+			{
+				texture nskingr.jpg
+			}
+		}
+	}
+}
+
+
+material Examples/OgreLogo
+{
+	technique
+	{
+		pass
+		{
+			ambient 0.8 0.8 0.8
+
+			texture_unit
+			{
+				texture stonewall_diffuse_512.png
+			}
+		}
+	}
+}
+
+
+material PRJZ/PSSM/shadow_caster
+{
+	technique
+	{
+		
+		pass
+		{
+			lighting off
+			fog_override true
+			cull_hardware front
+			//filtering none
+			//cull_software front
+			//depth_write on
+			color_write off
+			//depth_check on
+			//depth_write off
+			vertex_program_ref PRJZ/PSSM/shadow_caster_vs
+			{
+			}
+			
+			fragment_program_ref PRJZ/PSSM/shadow_caster_ps
+			{
+			}
+		}
+	}
+}
+
+
+material PRJZ/Minecraft2
+{
+	technique lighting
+	{
+		shadow_caster_material PRJZ/PSSM/shadow_caster
+		//scheme HDR
+		pass
+		{	fog_override true
+			depth_write on
+			depth_check on
+			//cull_hardware none			
+			
+			
+			//scene_blend alpha_blend
+		
+			vertex_program_ref MinecraftVP_cgTest
+			{
+			}
+			fragment_program_ref MinecraftFP_cgTest
+			{
+			}
+		
+			texture_unit textureArray
+			{
+				texture_alias diffuseMap	
+			}
+			texture_unit gBuffer
+			{
+			}
+			texture_unit lBuffer
+			{
+			}
+			texture_unit hfaoBuffer
+			{
+			}
+			texture_unit cubeTexture
+			{
+				//texture_alias cubeMap
+			}
+			texture_unit ssaoBuffer
+			{
+			}
+			texture_unit shadowTex0
+			{
+				content_type shadow
+			}
+			texture_unit shadowTex1
+			{
+				content_type shadow
+			}
+			texture_unit shadowTex2
+			{
+				content_type shadow
+			}
+			texture_unit colormap
+			{
+				texture gradient_map.png
+			}
+		
+		}
+	}
+
+	technique gbuffer
+	{
+		scheme gbuffer
+		pass
+		{
+			depth_write on
+			depth_check on
+			//cull_hardware none
+			//clockwise
+			vertex_program_ref PRJZ/MinecraftGBuffer_vsHLSLTest
+			{
+			}
+			fragment_program_ref PRJZ/MinecraftGBuffer_psHLSLTest
+			{
+			}
+			texture_unit normalArray
+			{
+				texture_alias normalMap
+				filtering none
+			}
+			texture_unit specularArray
+			{
+				texture_alias specularMap
+			}
+		}
+	}
+}
+
+
+material PRJZ/Minecraft
+{
+	technique lighting
+	{
+		scheme donotrender
+		//shadow_caster_material PRJZ/PSSM/shadow_caster
+		//shadow_caster_material Ogre/shadow/depth/caster
+		//Ogre/shadow/depth/caster
+		pass
+		{
+			//ambient 1 1 1 1
+			//diffuse 1 1 1 1
+			fog_override true
+			//depth_bias 0.1
+			//cull_hardware front 
+			//cull_software back
+			//polygon_mode wireframe
+			//modulate
+			depth_write on
+			depth_check on
+			vertex_program_ref PRJZ/PSSM/shadow_reciever_vs
+			{
+				//param_named		LightPosition	float4	       256 512 -512 0
+				
+			}
+			
+			fragment_program_ref PRJZ/PSSM/shadow_reciever_ps
+			{
+				//param_named	pssmSplitPoints	float4	1 2 256 1024
+			}
+
+			
+			
+			texture_unit shadowMap0
+			{
+				content_type shadow
+				tex_address_mode border
+				tex_border_colour 1 1 1 1
+			}
+			texture_unit shadowMap1
+			{
+				content_type shadow
+				tex_address_mode border
+				tex_border_colour 1 1 1 1
+			}
+			texture_unit shadowMap2
+			{
+				content_type shadow
+				tex_address_mode border
+				tex_border_colour 1 1 1 1
+			}
+			//texture_unit gBuffer1 //placeholder
+			//{
+				//filtering anisotropic
+			//}
+			texture_unit gBuffer1
+			{
+				texture_alias diffuseMap
+				filtering trilinear
+				tex_address_mode wrap
+				//filtering anisotropic
+				mipmap_bias 0.05
+				//filtering anisotropic anisotropic linear
+				//filtering none
+				max_anisotropy 8
+				//texture minecraft_atlas0_ghost.dds 2d gamma 
+				//texture minecraft_terrain_ghost.png 2d gamma
+				//texture minecraft_atlas0_custom.dds 2d gamma
+				//texture stonewall_diffuse_1024.png 2d gamma
+				//texture rock1_diffuse_1024.tga 2d gamma
+			}
+			texture_unit gBuffer
+			{
+				filtering none
+			}
+
+			texture_unit lBuffer
+			{
+				filtering anisotropic
+			}
+			texture_unit ssaoBuffer
+			{
+				filtering none
+			}
+			texture_unit hfaoBuffer
+			{
+				filtering anisotropic
+			}
+
+		} 
+	}
+
+	technique gbuffer
+	{
+		scheme gbuffer
+		
+		pass
+		{
+			cull_hardware clockwise
+			vertex_program_ref PRJZ/MinecraftGBuffer_vs
+			{
+			}
+
+			fragment_program_ref PRJZ/MinecraftGBuffer_ps
+			{
+			}
+			texture_unit diffuseMap 
+			{
+			}
+			texture_unit normalMap
+			{
+				texture_alias normalMap
+			
+				texture minecraft_atlas0_ghost_nh.dds
+				//texture minecraft_ghost_nh.png
+				//texture minecraft_atlas0_custom_nh.dds
+				//texture stonewall_normal_1024.png
+				//texture rock1_normalh_1024.tga
+				tex_address_mode clamp
+				mipmap_bias 0.05
+				//filtering anisotropic
+				filtering trilinear
+				//max_anisotropy 16
+				//filtering anisotropic anisotropic linear
+				//tex_address_mode wrap
+			
+			}
+			texture_unit specularMap
+			{
+				texture_alias specularMap
+				filtering trilinear
+				//filtering anisotropic anisotropic linear
+				texture minecraft_atlas0_ghost_s.dds
+				//texture minecraft_ghost_s.png
+				//texture rock1_specular_1024.tga
+				//max_anisotropy 16
+				mipmap_bias 0.05
+			}
+
+			
+			
+		}
+		
+	}		
+}
+material PRJZ/LightBuffer 
+{
+	technique LightShader
+	{
+		//scheme zpass
+		pass
+		{
+			depth_write off
+			depth_check on
+			transparent_sorting off
+			lighting off
+			depth_func greater
+			//depth_func greater
+			//depth_func less
+			//depth_func less_equal
+			separate_scene_blend add add
+			//scene_blend add
+			//cull_hardware none
+			//cull_software back
+			
+			//cull_hardware none
+			cull_hardware anticlockwise
+			//cull_hardware clockwise
+			//cull_hardware anticlockwise
+			vertex_program_ref PRJZ/MinecraftLightBuffer_vs
+			{
+				//param_named lightPosView custom 0
+				//param_named lightPosView custom 0 0 0 0
+			}
+			fragment_program_ref PRJZ/MinecraftLightBuffer_ps
+			{
+				//param_named lightPosView custom 0
+				
+				//param_named lightColor custom 1
+				//param_named attFactor custom 2
+				//param_named specularPower custom 3
+			}
+			texture_unit gBuffer
+			{
+				filtering none
+			}
+			texture_unit gBuffer1
+			{
+				filtering none
+			}
+		}
+	}
+//	technique LightVolume
+	//{
+		//scheme LV
+		//pass
+		//{
+			//depth_write on
+			//depth_check on
+			//depth_func less
+			//colour_write off
+			//lighting off
+		//}
+	//}
+}
+
+material PRJZ/DirectionLightBuffer
+{
+	technique LightShader
+	{
+		pass 0
+		{
+			depth_write off
+			depth_check off
+			transparent_sorting off
+			lighting off
+			separate_scene_blend add add
+		
+			vertex_program_ref PRJZ/DirectionLightBuffer_vs
+			{
+			}
+			fragment_program_ref PRJZ/DirectionLightBuffer_ps
+			{
+			}
+			texture_unit gBuffer
+			{
+				filtering none
+			}
+			texture_unit hfaoBuffer
+			{
+				filtering anisotropic
+			}
+		}
+	}
+}
+
+
+//transparent a,b are for rendering transparent blocks
+material PRJZ/TransparentA
+{
+	technique
+	{
+		pass
+		{
+			depth_write on
+			depth_check on
+			//depth_bias 0.1
+			//depth_func greater
+			colour_write off
+			lighting off
+		}
+	}
+}
+
+material PRJZ/TransparentB
+{
+	technique
+	{
+		pass
+		{
+			depth_write off
+			depth_check on
+			depth_bias 0.1
+			//depth_func greater_equal
+			scene_blend alpha_blend
+			//cull_hardware none
+			//scene_blend_op min
+			//alpha_rejection greater 128 
+			//polygon_mode wireframe
+			lighting off
+
+			texture_unit trans
+			{
+				texture transparent.png
+			}
+		}
+	}
+}
+
+material PRJZ/HWBasic
+{
+	technique lighting
+	{
+		pass
+		{
+			depth_write on
+			depth_check on
+			vertex_program_ref PRJZ/HWLighting_hlsl_vs
+			{
+			}
+			fragment_program_ref PRJZ/HWLighting_hlsl_ps
+			{
+			}
+			texture_unit textureArray
+			{
+
+			}
+			texture_unit gBuffer
+			{
+			}
+			texture_unit lBuffer
+			{
+			}
+			texture_unit hfaoBuffer
+			{
+			}
+			texture_unit cubeTexture
+			{
+			}
+			texture_unit ssaoBuffer
+			{
+			}
+			
+		}
+	}
+	technique gbuffer
+	{
+		scheme gbuffer
+		pass
+		{
+			depth_write on
+			depth_check  on
+			vertex_program_ref PRJZ/HWBasic_hlsl_vs 
+			{
+			}
+			//fragment_program_ref PRJZ/HardwareBasicGBuffer_psHLSL
+			fragment_program_ref PRJZ/HWBasic_hlsl_ps
+			{
+			}
+		}
+	}
+}
+
+material Cubemap : PRJZ/Minecraft2
+{
+	technique lighting
+	{
+		pass
+		{
+			vertex_program_ref PRJZ/MinecraftCharacterCubemap_vsHLSL
+			{
+			}
+			fragment_program_ref PRJZ/MinecraftCharacterCubemap_psHLSL
+			{
+			}
+			texture_unit cubeMap
+			{
+				texture_alias cubeMap
+				texture OutputCube.dds
+			}
+		}
+	}
+	technique gbuffer
+	{
+		scheme gbuffer
+
+		pass
+		{
+			vertex_program_ref PRJZ/MinecraftCharacterGBuffer_vsHLSL
+			{
+			}
+			fragment_program_ref PRJZ/MinecraftCharacterGBuffer_psHLSL
+			{
+			}
+		}
+	}
+}
+
+material PRJZ/MinecraftCharacter : PRJZ/Minecraft
+{
+	//set_texture_alias diffuseMap character_diffuse.tga gamma
+	set_texture_alias diffuseMap head_diffuse.png gamma
+	//set_texture_alias normalMap character_nh.tga
+	set_texture_alias normalMap head_normalmap.png
+	set_texture_alias specularMap character_s.tga
+	technique lighting
+	{
+		pass
+		{
+			vertex_program_ref PRJZ/PSSM/shadow_recieverCharacter_vs
+			{
+			}
+			fragment_program_ref PRJZ/PSSM/shadow_recieverCharacter_ps
+			{
+			}
+		}
+	}
+	technique gbuffer
+	{
+		scheme gbuffer
+		
+		pass
+		{
+			vertex_program_ref PRJZ/MinecraftCharacterGBuffer_vsHLSL
+			{
+			}
+
+			fragment_program_ref PRJZ/MinecraftCharacterGBuffer_psHLSL
+			{
+			}
+		}
+	}		
+}
+
+material PRJZ/DebugShadow
+{
+		technique
+		{
+			shadow_caster_material PRJZ/PSSM/shadow_caster
+			pass
+			{
+				vertex_program_ref PRJZ/PSSM/debug_shadow_vs
+				{
+				}
+
+				fragment_program_ref PRJZ/PSSM/debug_shadow_ps
+				{
+				}
+				texture_unit shadowMap0
+				{
+					content_type shadow
+					tex_address_mode border
+					tex_border_colour 1 1 1 1
+				}
+				texture_unit shadowMap1
+				{
+					content_type shadow
+				
+					tex_address_mode border
+					tex_border_colour 1 1 1 1
+				}
+				texture_unit shadowMap2
+				{
+					content_type shadow
+					tex_address_mode border
+					tex_border_colour 1 1 1 1
+				}
+				texture_unit diffuseMap
+				{
+					texture minecraft_terrain_bb.png
+				}
+			}
+		}
+}
+
+
+
+
+
+material testatlas
+{
+	technique
+	{
+		//pass
+		//{
+			//diffuse vertexcolour
+			//lighting off
+			//alpha_rejection greater_equal 128
+		//}
+		pass
+		{
+			diffuse 1.0 1.0 1.0
+			//ambient 1.0 1.0 1.0
+			lighting off
+			//alpha_rejection greater_equal 128
+			//modulate
+			texture_unit
+			{
+				texture minecraft_terrain_bb.png
+			}
+		}
+	}
+}
+
+
+material PRJZ/WireframeTool
+{
+	technique
+	{
+		pass
+		{
+			
+			diffuse 0.5 0.0 0.0
+			specular 1.0 1.0 1.0 12.5
+			emissive 1.0 0.0 0.0
+			//depth_check off
+			//depth_write off
+			polygon_mode wireframe
+			
+			vertex_program_ref PRJZ/basic_vs
+			{
+			}
+			fragment_program_ref PRJZ/basic_ps
+			{
+			}
+
+		}
+	}
+
+}
+
+material PRJZ/BlueCursor : PRJZ/WireframeTool
+{
+	technique
+	{
+		pass
+		{
+			diffuse 0.0 0.6 0.0
+		}
+	}
+}
+
+
+material PRJZ/HDRBackground
+{
+	technique
+	{
+		pass
+		{
+			depth_write off
+			depth_check off
+			lighting off
+			
+			vertex_program_ref PRJZ/HDRBackground_vs
+			{
+			}
+			fragment_program_ref PRJZ/HDRBackground_ps
+			{
+			}
+		}
+	}
+}
+
+material PRJZ/CLEAR_QUAD
+{
+	technique
+	{
+		pass
+		{
+			depth_write off
+			depth_check off
+			lighting off
+			
+			vertex_program_ref PRJZ/CLEAR_QUAD_vs
+			{
+			}
+			fragment_program_ref PRJZ/CLEAR_QUAD_ps
+			{
+			}
+		}
+	}
+}
+
+material PRJZ/hfao
+{
+	technique lighting
+	{
+	pass
+	{
+		depth_check off
+		depth_write off
+		vertex_program_ref hfao_vs
+		{
+		}
+
+		fragment_program_ref hfao_ps
+		{
+		}
+
+		texture_unit geomMap
+		{
+			tex_address_mode clamp
+			filtering none
+		}
+		texture_unit randMap
+		{
+			//texture random.png
+			filtering none
+		}
+		texture_unit heightMap
+		{
+			//filtering none
+			//filtering bilinear
+			filtering trilinear
+			tex_address_mode wrap
+		}
+		texture_unit bitVolumeMap
+		{
+			filtering none
+			tex_address_mode wrap
+		}
+		texture_unit bitwiseLookupMap
+		{
+			filtering none
+			tex_address_mode clamp
+		}
+	
+	}
+	}
+}
+
+material PRJZ/wendlandfilter
+{
+	technique
+	{
+		pass
+		{
+			vertex_program_ref wendland_vs
+			{
+			}
+			fragment_program_ref wendland_ps
+			{
+			}
+			texture_unit map
+			{
+				tex_address_mode clamp
+				filtering bilinear
+			}
+		}
+	}
+}
+
+material PRJZ/hfaoBlurX
+{
+	technique
+	{
+	pass
+	{
+		vertex_program_ref PRJZ/basic_vs_uv
+		{
+		}
+		fragment_program_ref PRJZ/hfaoBlurX_ps
+		{
+		}
+
+		texture_unit map
+		{
+			tex_address_mode clamp
+			filtering bilinear
+		}
+		texture_unit geomMap
+		{
+			tex_address_mode clamp
+			filtering bilinear	
+		}
+	}
+	}
+}
+
+material PRJZ/hfaoBlurY
+{
+	technique
+	{
+		pass
+		{
+			vertex_program_ref PRJZ/basic_vs_uv
+			{
+			}
+			fragment_program_ref PRJZ/hfaoBlurY_ps
+			{
+			}
+			
+			texture_unit map
+			{
+				tex_address_mode clamp
+				filtering bilinear
+			}
+			texture_unit geomMap
+			{
+				tex_address_mode clamp
+				filtering bilinear
+			}
+		}
+	}
+}
+
+material PRJZ/BasicMat
+{
+	technique basic
+	{
+		pass
+		{
+			depth_write off
+			depth_check off
+			colour_write on
+			vertex_program_ref PRJZ/basic_vs
+			{
+			}
+			fragment_program_ref PRJZ/basic_ps
+			{
+			}
+		}
+	}
+}
+
+material PRJZ/BasicMatWire : PRJZ/BasicMat
+{
+	technique basic
+	{
+		pass
+		{
+			polygon_mode wireframe
+		}
+	}
+}
+
+material PRJZ/BasicTexture
+{
+	technique
+	{
+		pass
+		{
+			vertex_program_ref PRJZ/basic_vs_uv
+			{
+			}
+			fragment_program_ref PRJZ/basic_texture_ps
+			{
+			}
+		}
+	}
+}

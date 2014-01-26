@@ -1,0 +1,346 @@
+//This is a test
+//const float4 CONST_COLOR = float4(1.0, 0.0, 0.0, 1.0);
+#include "defines.hlsl"
+#include "NormalEncoding.cg"
+
+struct VS_IN
+{
+  float4 position : POSITION;
+  float4 colour : COLOR0;
+  float4 uv1 : TEXCOORD0;
+  float3 normal : NORMAL0;
+  float3 tangent : TANGENT0;
+};
+struct PS_IN
+{
+  float4 position : SV_POSITION;
+  float4 colour : COLOR0;
+#if BLOCKS
+  float4 worldPosition : TEXCOORD0;
+  float4 textureArrayIdx : TEXCOORD1;
+#elif CHARACTER
+  float3 modelNormal : TEXCOORD0;
+  float4 uv1 : TEXCOORD1;
+  float3 viewDirectionWorld : TEXCOORD2;
+#endif
+};
+
+
+
+SamplerState LBufferMap
+{
+};
+
+PS_IN main_vp(
+	      VS_IN input
+	      , uniform float4x4 worldViewProj
+#if BLOCKS
+	     
+#elif CHARACTER
+	      , uniform float4x4 worldMat
+	      , uniform float3 eyePosition
+#endif
+)
+{
+  PS_IN output = (PS_IN)0;
+  output.position = mul(worldViewProj, input.position);
+#if BLOCKS
+  output.colour = input.colour;
+  output.worldPosition = input.position + float4(0.5, 0.5, 0.5, 0.5);
+  output.textureArrayIdx = input.uv1.x * 256.0 - 1; //expand into [0, 255] so it becomes an index
+  //output.textureArrayIdx = 1; //expand into [0, 255] so it becomes an index
+#elif CHARACTER
+  output.colour = float4(1.0, 1.0, 1.0, 1.0);
+  output.uv1 = input.uv1;
+  float4 worldPos = mul(worldMat, input.position);
+  output.viewDirectionWorld = normalize(worldPos.xyz - eyePosition);
+#endif
+  return output;
+
+}
+
+PS_IN zpass_vp(
+	       VS_IN input,
+	       uniform float4x4 wvpMat
+	       )
+{
+  PS_IN output = (PS_IN)0;
+  output.position = mul(wvpMat, input.position);
+  return output;
+}
+
+
+float4 zpass_fp(
+		PS_IN input
+		) : SV_TARGET0
+{
+  return float4(0, 0, 0, 0);
+}
+
+SamplerState GBufferMap
+{
+  //Filter=ANISOTROPIC;
+  Filter=MIN_MAG_MIP_POINT;
+};
+
+SamplerState CubeMap
+{
+};
+
+float4 main_fp(
+	       PS_IN input
+	     	       //SH coeffs.
+	       , uniform float SHC_R_0
+	       , uniform float SHC_R_1
+	       , uniform float SHC_R_2
+	       , uniform float SHC_R_3
+	       , uniform float SHC_R_4
+	       , uniform float SHC_R_5
+	       , uniform float SHC_R_6
+	       , uniform float SHC_R_7
+	       , uniform float SHC_R_8 
+#if FULLBAND
+	       , uniform float SHC_R_9 
+	       , uniform float SHC_R_10
+	       , uniform float SHC_R_11 
+	       , uniform float SHC_R_12 
+	       , uniform float SHC_R_13 
+	       , uniform float SHC_R_14 
+	       , uniform float SHC_R_15 
+	       , uniform float SHC_R_16 
+	       , uniform float SHC_R_17
+#endif
+	       , uniform float SHC_G_0
+	       , uniform float SHC_G_1
+	       , uniform float SHC_G_2
+	       , uniform float SHC_G_3
+	       , uniform float SHC_G_4
+	       , uniform float SHC_G_5
+	       , uniform float SHC_G_6
+	       , uniform float SHC_G_7
+	       , uniform float SHC_G_8 
+#if FULLBAND
+	       , uniform float SHC_G_9 
+	       , uniform float SHC_G_10 
+	       , uniform float SHC_G_11 
+	       , uniform float SHC_G_12 
+	       , uniform float SHC_G_13 
+	       , uniform float SHC_G_14 
+	       , uniform float SHC_G_15 
+	       , uniform float SHC_G_16 
+	       , uniform float SHC_G_17
+#endif
+	       , uniform float SHC_B_0
+	       , uniform float SHC_B_1
+	       , uniform float SHC_B_2
+	       , uniform float SHC_B_3
+	       , uniform float SHC_B_4
+	       , uniform float SHC_B_5
+	       , uniform float SHC_B_6
+	       , uniform float SHC_B_7
+	       , uniform float SHC_B_8
+#if FULLBAND 
+	       , uniform float SHC_B_9
+	       , uniform float SHC_B_10
+	       , uniform float SHC_B_11
+	       , uniform float SHC_B_12
+	       , uniform float SHC_B_13
+	       , uniform float SHC_B_14
+	       , uniform float SHC_B_15
+	       , uniform float SHC_B_16
+	       , uniform float SHC_B_17
+#endif
+	       , uniform float4 gBufferMapDimension
+	       , uniform float4x4 inverseViewMat
+	       , uniform float uLightY
+#if BLOCKS
+	       , uniform SamplerState TextureArrayMap : register(s0)
+#elif CHARACTER
+	       , uniform SamplerState TextureMap : register(s0)
+#endif
+	       //, uniform SamplerState GBufferMap : register(s1)
+	       //, uniform SamplerState LBufferMap : register(s2)
+	       , uniform SamplerState HFAOBufferMap : register(s3)
+	       , uniform SamplerState CubeMap : register(s4)
+#if BLOCKS
+	       , uniform Texture2DArray textureArray : register(t0)
+#elif CHARACTER
+	       , uniform Texture2D tex2D : register(t0)
+#endif
+	       , uniform Texture2D gBuffer : register(t1)
+	       , uniform Texture2D lBuffer : register(t2)
+	       , uniform Texture2D hfaoBuffer : register(t3)
+	       , uniform TextureCube cubeTexture : register(t4)
+) : SV_TARGET0
+{
+  //SH constants
+  const float C1 = 0.429043;
+  const float C2 = 0.511664;
+  const float C3 = 0.743125;
+  const float C4 = 0.886227;
+  const float C5 = 0.247708;
+  const float d1 = -0.081922;
+  const float d2 = -0.231710;
+  const float d3 = -0.061927;
+  const float d4 = -0.087578;
+  const float d5 = -0.013847;
+  const float d6 = -0.123854;
+  const float d7 = -0.231710;
+  const float d8 = -0.327688;
+  const float3 L00 = float3(SHC_R_0, SHC_G_0, SHC_B_0);
+  const float3 L1m1 = float3(SHC_R_1, SHC_G_1, SHC_B_1);
+  const float3 L10 = float3(SHC_R_2, SHC_G_2, SHC_B_2);
+  const float3 L11 = float3(SHC_R_3, SHC_G_3, SHC_B_3);
+  const float3 L2m2 = float3(SHC_R_4, SHC_G_4, SHC_B_4);
+  const float3 L2m1 = float3(SHC_R_5, SHC_G_5, SHC_B_5);
+  const float3 L20 = float3(SHC_R_6, SHC_G_6, SHC_B_6);
+  const float3 L21 = float3(SHC_R_7, SHC_G_7, SHC_B_7);
+  const float3 L22 = float3(SHC_R_8, SHC_G_8, SHC_B_8);
+
+  const float3 L00a  = float3( 0.78908,  0.43710,  0.54161);
+  const float3 L1m1a = float3( 0.39499,  0.34989,  0.60488);
+  const float3 L10a  = float3(-0.33974, -0.18236, -0.26940);
+  const float3 L11a  = float3(-0.29213, -0.05562,  0.00944);
+  const float3 L2m2a = float3(-0.11141, -0.05090, -0.12231);
+  const float3 L2m1a = float3(-0.26240, -0.22401, -0.47479);
+  const float3 L20a  = float3(-0.15570, -0.09471, -0.14733);
+  const float3 L21a  = float3( 0.56014,  0.21444,  0.13915);
+  const float3 L22a  = float3( 0.21205, -0.05432, -0.30374);
+
+#if FULLBAND
+  const float3 L4m4 = float3(SHC_R_9, SHC_G_9, SHC_B_9);
+  const float3 L4m3 = float3(SHC_R_10, SHC_G_10, SHC_B_10);
+  const float3 L4m2 = float3(SHC_R_11, SHC_G_11, SHC_B_11);
+  const float3 L4m1 = float3(SHC_R_12, SHC_G_12, SHC_B_12);
+  const float3 L40 = float3(SHC_R_13, SHC_G_13, SHC_B_13);
+  const float3 L41 = float3(SHC_R_14, SHC_G_14, SHC_B_14);
+  const float3 L42 = float3(SHC_R_15, SHC_G_15, SHC_B_15);
+  const float3 L43 = float3(SHC_R_16, SHC_G_16, SHC_B_16);
+  const float3 L44 = float3(SHC_R_17, SHC_G_17, SHC_B_17);
+#endif
+
+  float2 screenCoord = input.position.xy / gBufferMapDimension.xy; //figure out screen-space uv.
+
+  float4 gBufferNormal; 
+
+  gBufferNormal.xyz = gBuffer.Sample(GBufferMap, screenCoord).xyz;
+  gBufferNormal.xyz = decode(gBufferNormal);
+  
+  //gBufferNormal.xyz = mul(inverseViewMat, float4(gBufferNormal.xyz, 0.0)).xyz; //transform gBufferNormal from view-space into world-space. Note this a transformation of normal.
+  //gBufferNormal.xyz = (gBufferNormal.xyz = 1.0) * 0.5;
+  float3 n = float3(-gBufferNormal.z, -gBufferNormal.x, gBufferNormal.y);
+  float4 shColor = float4(1.0, 1.0, 1.0, 1.0);
+  
+  //Do the SH inner product to derive sh radiance. This is a lambertian expansion. See SH environment map paper for the derivation (ex: the N.L Lambertian term).
+  //We do a 5th order expansion. See Stupid SH tricks for the 4th and 5th order coeffs (that doesn't appear in SH environment map paper). Note: I manually derived the 4th
+  //and 5th order terms, so they may be wrong. Need to double check against Stupid SH tricks paper.
+  shColor.xyz =  C1 * L22 * (n.x * n.x - n.y * n.y) +
+                      C3 * L20 * n.z * n.z +
+                      C4 * L00 -
+                      C5 * L20 +
+                      2.0 * C1 * L2m2 * n.x * n.y +
+                      2.0 * C1 * L21  * n.x * n.z +
+                      2.0 * C1 * L2m1 * n.y * n.z +
+                      2.0 * C2 * L11  * n.x +
+                      2.0 * C2 * L1m1 * n.y +
+    2.0 * C2 * L10  * n.z
+#if FULLBAND
++
+    d1 * L4m4 * (n.x*n.x*(n.x*n.x-3.0*n.y*n.y) - n.y*n.y * (3.0*n.x*n.x-n.y*n.y)) +
+    d2 * L4m3 * (n.x*n.z*(n.x*n.x-3.0*n.y*n.y)) +
+    d3 * L4m2 * ((n.x*n.x-n.y*n.y)*(7.0*n.z*n.z-1.0)) + 
+    d4 * L4m1 * ((n.x*n.z*(7.0*n.z*n.z-3.0))) + 
+    d5 * L40 * (35.0*n.z*n.z*n.z*n.z - 30.0*n.z*n.z + 3.0) + 
+    d4 * L41 * (n.y*n.z*(7.0*n.z*n.z-3.0)) + 
+    d6 * L42 * (n.x*n.y*(7.0*n.z*n.z-1.0)) + 
+    d7 * L43 * (n.y*n.z*(3.0*n.x*n.x-n.y*n.y)) + 
+    d8 * L44 * (n.x*n.y*(n.x*n.x-n.y*n.y));
+#else
+  ;
+#endif
+
+  float4 shColor2; //This is SH for a 2nd lighting environment. The first is from dynamic sky. We mix the two.
+  shColor2.xyz = C1 * L22a * (n.x * n.x - n.y * n.y) +
+    C3 * L20a * n.z * n.z +
+    C4 * L00a -
+    C5 * L20a +
+    2.0 * C1 * L2m2a * n.x * n.y +
+    2.0 * C1 * L21a  * n.x * n.z +
+    2.0 * C1 * L2m1a * n.y * n.z +
+    2.0 * C2 * L11a  * n.x +
+    2.0 * C2 * L1m1a * n.y +
+    2.0 * C2 * L10a  * n.z;
+
+  float4 lPixel;
+  float hfaoFactor = 1.0;
+  float ssaoFactor;
+  float4 texDiffuse;
+  float nightFactor = 1.0;
+
+#if BLOCKS
+  float3 texCoord = ComputeBlockUV2(input.worldPosition);
+  
+  texDiffuse = textureArray.Sample(TextureArrayMap, float3(texCoord.xy, input.textureArrayIdx.x));
+  texDiffuse.xyz *= input.colour.xyz;
+  //texDiffuse = textureArray.Sample(TextureArrayMap, float3(texCoord.xy, 1));
+  //texDiffuse = testMap.Sample(GBufferMap, texCoord.xy);
+  lPixel = lBuffer.Sample(LBufferMap, screenCoord);
+  hfaoFactor = hfaoBuffer.Sample(HFAOBufferMap, screenCoord).x;
+   
+  if(uLightY < 0.0)
+    {
+      nightFactor = 1.0 / (1.0 - uLightY) * 0.007;
+    }
+  float shScale = 0.00005;
+  float shScale2 = 0.3;
+  //stepv 0.105, 0.12
+  float stepv = smoothstep(0.04, 0.05, hfaoFactor);
+  //float stepv = step(0.05, hfaoFactor);
+  //shColor2.xyz *= shScale;
+  shColor.xyz = (1.0 - stepv)*shColor2.xyz *shScale2 
+    + stepv*shColor.xyz * nightFactor * shScale;
+  //shColor.xyz *= nightFactor * shScale;
+  //shColor.xyz *= shScale;
+  
+  //shColor2.xyz *= shScale;
+#elif CHARACTER 
+  texDiffuse = tex2D.Sample(TextureMap, input.uv1);
+  lPixel = lBuffer.Sample(LBufferMap, screenCoord);
+  hfaoFactor = hfaoBuffer.Sample(HFAOBufferMap, screenCoord).x;
+#if CUBEMAP
+  //float3 reflectVec = reflect(input.viewDirectionWorld, gBufferNormal.xyz);
+  //float3 texCubemap = cubeTexture.Sample(CubeMap, reflectVec);
+
+  //texDiffuse.xyz = lerp(texDiffuse.xyz, texCubemap, 0.0);
+
+#endif 
+ 
+  
+ 
+  if(uLightY < 0.0)
+    {
+      nightFactor = 1.0 / (1.0 - uLightY) * 0.007;
+    }
+  float shScale = 0.00005;
+  float shScale2 = 0.3;
+  //0.105, 0.12
+  float stepv = smoothstep(0.04, 0.05, hfaoFactor); //select between shMaps.//was 0.05
+  shColor.xyz = (1.0 - stepv)*shColor2.xyz * shScale2
+    + stepv*shColor.xyz * shScale * nightFactor;
+  
+  
+  //shColor2.xyz *= shScale;
+
+#endif
+  //texDiffuse.xyz = float3(1, 1.0, 1.0);
+  //shColor.xyz = texDiffuse.xyz;
+  //lPixel.w -= 1.0;
+  shColor.xyz = texDiffuse.xyz * shColor.xyz * hfaoFactor + texDiffuse.xyz * (lPixel.xyz + lPixel.www);
+  //shColor.xyz =shColor.xyz + (lPixel.xyz + lPixel.www);
+  //shColor.xyz = texDiffuse.xyz;
+  return float4(shColor.xyz, 1.0);
+  
+  //return float4(stepv, stepv, stepv, 1.0);
+  //return float4(gBufferNormal.xyz, 1.0);
+  //return float4(gBufferNormal.xyz, 1.0);
+}

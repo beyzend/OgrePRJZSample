@@ -1,0 +1,103 @@
+
+float3 ComputeOrenNayar(float3 N, float3 L, float3 viewPos, float3 lightDiffuse, float roughnessSquared, float C)
+{
+  float3 V = normalize(-viewPos);
+  // Oren-Nayar model
+  float A = 1.0 - (0.5 * roughnessSquared) / (roughnessSquared + 0.33);
+  float B = (0.45 * roughnessSquared) / (roughnessSquared + 0.09);	
+	
+  float VdotN = dot(V, N);
+  float LdotN = dot(L, N);
+  float irradiance = max(0.0, LdotN);
+	
+  float angleViewNormal  = acos(VdotN);
+  float angleLightNormal = acos(LdotN);
+	
+  // max( 0.0 , cos(phi_incident, phi_reflected) )
+  float angleDiff = max(0.0, dot(normalize(V - N * VdotN),
+				 normalize(L - N * LdotN)));
+  float alpha = max(angleViewNormal, angleLightNormal);
+  float beta  = min(angleViewNormal, angleLightNormal);
+				
+  // final color
+  
+  return lightDiffuse * irradiance * C * (A + B * angleDiff * sin(alpha) * tan(beta));
+}
+
+float4 ComputeBlinnPhongSpecular(float3 N, float3 L, float3 viewPos, float3 diffuseColor, float specularMod, float specularPower, float C)
+{
+  float NL = saturate(dot(L, N));
+  float3 H = normalize(L + -viewPos.xyz);
+  //no multiply by specular mod
+  
+  float specular = pow(saturate(dot(N, H)), specularPower) * C * NL * (specularPower + 8) / (8 * PI);
+  
+  //return specular;
+  float3 diffuse = diffuseColor * NL * C;
+  
+  return float4(diffuse, specular);
+}
+
+float SpecularBlinnPhong(float3 N, float3 L, float3 viewPos, float3 diffuseColor, float specularMod, float specularPower, float C)
+{
+  float NL = saturate(dot(N, L));
+  float3 H = normalize(L + -viewPos.xyz);
+  //specularPower = 10.0;
+  float specular = pow(saturate(dot(N, H)), specularPower) * C * NL * (specularPower + 8) / (8 * PI);// * specularMod;
+  return specular * 8.0;
+}
+
+float4 ComputeTriaceShading(float3 N, float3 L, float3 viewPos, float3 lightDiffuse, float specularMod, float specularPower, float C)
+{
+  const float fnaught = 0.009;
+  //const float fnaught = 0.04;
+  //lightDiffuse = 128.0;
+  float3 V = normalize(-viewPos.xyz);
+
+  float3 H = normalize(L + V);
+
+  //float3 diffuse = lightDiffuse / PI * (1.0 - fnaught) * C;
+  
+  //float fDiffuse = fnaught + (1.0 - fnaught)*pow(1.0 - saturate(dot(N, L)), 5.0);
+  //float diffuseT = 1.0 / PI * (1.0 - fDiffuse);//1.0 / PI * (1.0 - fDiffuse);
+  //float diffuseT = (1.0 - fnaught) ;
+  //diffuseT = trunc((diffuseT * 1024.0 + 1.0));
+
+  //float3 diffuse = trunc(lightDiffuse * diffuseT * 1024.0 + 1.0) / 1024.0;
+  
+
+  //float fresnelSpec = fnaught + (1.0 - fnaught) * pow(1.0 - dot(V, H), 5.0);
+
+
+  float factor = max(dot(N, L), dot(N, V));
+  float specular = 0.0;
+  //specularPower = 128.0;
+  float p1 = (0.0397436 * specularPower + 0.0856832);
+  float p2 = pow(saturate(dot(N, H)), specularPower);
+  //if(factor > 0)
+    specular = p1 * p2 / factor;
+    //else 
+    //specular = 0.0;
+    specular = max(0, specular);
+    //  specular = 0.0;
+    //float3 diffuse = lightDiffuse * diffuseT;
+    float3 diffuse = 1.0 / PI * lightDiffuse * saturate(dot(N, L));
+    //return float4( ((1.0 - specular)*diffuse) * C, specular * C);
+    
+    specular *= saturate(dot(N, L));
+
+    float a = 1.0f / (sqrt( PI / 4.0 * specularPower + PI / 2.0));
+    
+    float n_d_l = saturate(dot(N, L));
+    float n_d_v = saturate(dot(N, V));
+    
+    float vis = (n_d_l * (1.0 - a) + a)*(n_d_v * (1.0 - a) + a);
+    
+    specular *= 1.0 / vis;
+    float lum = dot(float3(0.2126, 0.7152, 0.0722) , lightDiffuse * specular);
+ 
+  //diffuse = (1.0 - specular)*diffuse;
+
+  
+  return float4(diffuse * C, lum * C)*PI;
+}

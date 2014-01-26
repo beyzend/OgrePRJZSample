@@ -1,0 +1,437 @@
+#include "NormalEncoding.cg"
+
+
+struct VIn
+{
+  float4 p : POSITION;
+  float3 n : NORMAL;
+  float2 uv : TEXCOORD0;
+};
+
+
+struct PIn
+{
+  float4 p : SV_POSITION;
+  float2 uv : TEXCOORD0;
+  float3 ray : TEXCOORD1;
+  float3 viewVec : TEXCOORD2;
+};
+
+SamplerState HFAOMap
+{
+  AddressU = Wrap;
+  AddressV = Wrap;
+  Filter   = MIN_MAG_MIP_POINT;
+};
+
+PIn hfao_vs(VIn In,
+	     uniform float4x4 wvp,
+	     //uniform float3 farCorner,
+	     //uniform float4x4 invviewproj,
+	     uniform float4x4 invview,
+	     uniform float3 camPos
+	     //uniform float3 camp
+	     )
+{
+  PIn OUT = (PIn)0;
+  OUT.p = mul(wvp, In.p);
+  //Clean up inaccuracies for the UV coords
+  float2 uv = sign(In.p.xy);
+  //convert to image space
+  uv = (float2(uv.x, -uv.y) + 1.0) * 0.5;
+  OUT.uv = uv;
+  OUT.ray = In.n;
+  OUT.viewVec = mul(float4(OUT.ray, 0.0), invview).xyz - camPos;
+  return OUT;
+}
+
+float3 computeZ(float2 xy)
+{
+  return float3(xy, sqrt(1.0 - dot(xy, xy)));
+}
+
+float4 TEX2DLOD(Texture2D map, float2 uv)
+{
+  //return map.Load(int3(int2(uv), 0));
+  return map.Sample(HFAOMap, uv);
+  //return tex2D(map, uv);
+  //return tex2Dlod(map, float4(uv.xy, 0, 0));
+}
+/*
+float4 TEX2DLOD(sampler2D map, float2 uv)
+{
+  return tex2D(map, uv);
+  }*/
+ /* A custom mod function which works with -negative number with a positive n*/
+float2 custMod(float2 xy, float n)
+{
+  //float2 rt;
+  //rt.x = xy.x - (n * floor(xy.x / n));
+  //rt.y = xy.y - (n * floor(xy.y / n));
+  //return rt;
+  return xy - (n * floor(xy / n));
+}
+/**
+ *This function will compute the visibility function V. V is in approximately in range of [0.0, 1.0]
+ *given some floating point error but will be clamped to [0.0, 1.0]
+ **/
+float computeV(Texture2D heightMap, float2 samplePt, float worldY, float maxY)
+{
+  //was 0.25
+  //return clamp(step(0.0, (worldY - TEX2DLOD(heightMap, samplePt).x*maxY)), 0.30, 1.0); 
+  return clamp(step(0.0, (worldY - TEX2DLOD(heightMap, samplePt).x*maxY)), 0.01, 1.0); 
+  //return 1.0;
+}
+
+/**
+ * This method will compute the occupancy weight. If occupancy of an voxel is determines current weight, which is the new minimum.
+ *
+//float4 
+float computeOccupancyWeight(sampler2D bitVolumeMap, 
+			     sampler2D lookupTable, float2 samplePt, float worldY, float yScale, float curWeight, float2 inverseTexSize)
+{
+  //float4 bitVolRegion0 = tex2D(bitVolumeMap, samplePt);
+  //float4 bitVolRegion1 = tex2D(bitVolumeMap, samplePt + float2(0.5, 0.0) * inverseTexSize);
+  //float4 bitVolRegion1 = tex2D(bitVolumeMap, samplePt + float2(0.5, 0.0) * inverseTexSize);
+  //float4 bitVolRegion1 = tex2D(bitVolumeMap, samplePt);
+  //load the values into a matrix for numerical index based access
+  float2x4 bitsMatrix = float2x4(tex2D(bitVolumeMap, samplePt), tex2D(bitVolumeMap, samplePt + float2(0.5, 0.0) * inverseTexSize));
+  //Step in the world Y direction at sample point. e2 basis vector will always be world Y
+  float sampleY = worldY + yScale;
+  int regionIdx = trunc(sampleY / 24.0 / 4.0); //There are 24 values per region, this makes total of 6 regions for 128bits. 
+  //The first RGBA maps in the first 4 regions. Assumed always positive.
+  int componentIdx = trunc((sampleY / 24.0)) % 4; //There are 4 32bit regions per vector. So 0-3 repeating.
+  float bitsRegion = bitsMatrix[regionIdx][componentIdx];
+  //We're going to emulate bit operations here. We want: (x >> y) & 255 -> frac(x / 2**y) * 256.0
+  int bitsToShift = trunc((sampleY % 24.0) / 8.0) * 8.0;
+  //Now do the bitwise emulation
+  int maskedResult = frac((bitsRegion / pow(2, bitsToShift)) / 256.0) * 256.0;
+  //Use masked result to query the look up table for the status of the relevant bit.
+  float queryBit = trunc(sampleY % 8);
+  //return min(curWeight, saturate(1.0 - tex2D(lookupTable, float2(float(maskedResult) / 255.0, float(queryBit) / 7.0)).x));
+  //return 1.0;
+  //return bitVolRegion0;
+  
+  float lookup = min(curWeight, (1.0 - tex2D(lookupTable, float2(float(maskedResult) / 255.0, float(queryBit) / 7.0)).x) + 0.1);
+  //float lookup = saturate(1.0 - tex2D(lookupTable, float2(float(maskedResult) / 255.0, float(queryBit) / 7.0)).x + 0.15);
+  //float lookup = (1.0 - tex2D(lookupTable, float2(float(maskedResult) / 255.0, float(queryBit) / 7.0)).x)* + 0.00001;
+  return 1.0;
+  //return lookup;
+  //return 1.0;
+  //float lookup = tex2D(lookupTable, float2(float(maskedResult) / 255.0, float(queryBit) / 7.0)).x;
+  //return float4(bitsMatrix[0][0], bitsMatrix[0][1], bitVolRegion0.xy); 
+  //return float4(bitVolRegion0.xyz, sampleY);
+  //return float4(lookup, sampleY, worldY, yScale);
+  //return float4(yScale, sampleY, maskedResult, bitsRegion);
+  //return float4(samplePt, 0.0, 1.0);
+  //return regionIdx; 
+  //return tex2D(lookupTable, float2(float(maskedResult) / 255.0, float(queryBit) / 7.0)).x;
+}
+*/
+
+float4 hfao_ps(
+	       PIn In,
+	       uniform float3 camPos,
+	       uniform float4 invTexSize,
+	       uniform float4 bitVolInvTexSize,
+	       uniform float nPages,
+	       uniform float nearClip,
+	       uniform float farClip,
+	       uniform float4 texDim,
+	       uniform float4x4 invViewMat,
+	       uniform float4x4 transViewMat,
+	       uniform Texture2D geomMap : register(t0),
+	       uniform Texture2D randMap : register(t1),
+	       uniform Texture2D heightMap : register(t2),
+	       uniform Texture2D bitVolumeMap : register(t3),
+	       uniform Texture2D bitwiseLookupMap : register(t4)
+	       ): SV_Target0
+{
+  #define NUM_BASE_SAMPLES 6
+  //#define KSTEPS 3
+  #define KSTEPS 7
+  #define MAX_HEIGHT 128.0
+
+  const int JITDIM = 8;
+
+  //now we need to sample the jitter pattern using screen pos
+  float2 jitCoords = float2(float(int(In.p.x) % JITDIM), 
+			 float(int(In.p.y) % JITDIM));
+  //float4 geom = tex2D(geomMap, In.uv);
+  float4 geom = geomMap.Sample(HFAOMap, In.uv);
+
+  geom.xyz = decode(geom);
+  float depth = -geom.w;
+  //float3 viewNorm = geom.xyz;
+  
+  float3 interleavedPattern = TEX2DLOD(randMap, jitCoords / (JITDIM - 1)).xyz;
+  //float3 randXDir = float3(interleavedPattern.xy * 2.0 - 1.0, 0.0);
+  float3 randXDir = float3(interleavedPattern.x * 2.0 - 1.0, 0.0, interleavedPattern.y * 2.0 - 1.0);
+
+  //Transform view normal into world space
+  //float3 viewNorm1 = float3(0, 0, 1);
+  geom.xyz = mul(transViewMat, float4(geom.xyz, 0.0)).xyz;
+
+  
+
+  //randXDir = mul(transpose(viewMat), float4(randXDir, 0.0));
+
+  //reflect with normal to only generate direction facing away from normal, or upper hemisphere of surface.
+  //randXDir = reflect(randXDir, geom.xyz);
+  
+  float3 randYDir = cross(randXDir, float3(0.0, 1.0, 0.0));
+
+  //randYDir = (dot(geom.xyz, randYDir) < 0.0f) ? randYDir * -1 : randYDir; //the orthgonal vector to reflected randXDir needs to be fixed to also reflect away from face. 
+
+
+  randXDir.xy = randXDir.xz;
+  randYDir.xy = randYDir.xz;
+  
+  //randXDir.xy = normalize(randXDir.xy) * invTexSize.xy; //map a unit vector into texture space
+  //randYDir.xy = normalize(randYDir.xy) * invTexSize.xy;
+
+  
+
+  //derive world position by adding camera position to view space position.
+  float clipDistance = farClip - nearClip;
+
+  float3 worldPos = nearClip + camPos + In.viewVec * depth;
+
+  //float yBias = 0.5;
+  //yBias = (geom.xyz.y > 0.5) ? 1.5;
+  
+  worldPos.y += 0.5;
+ 
+  worldPos = worldPos;// + geom.xyz * 0.1; //biasing in direction of normal.
+
+  //float3 worldPos2 = geom.xyz;
+ 
+  float2 pageStart = floor(worldPos.xz / 32.0); //Figure out the page starting idx
+  float2 worldUv = custMod(pageStart, nPages); //this maps into texture in page space
+  
+  //float2 worldUv = custMod(worldPos.xz, nPages * 32.0) + float2(0.5, 0.5); //this maps into texture in page space
+  //float2 worldUv = custMod(worldPos.xz + float2(0.5, 0.5), nPages * 32.0); //this maps into texture in page space
+  
+
+  worldUv = worldUv*32.0 + custMod(worldPos.xz, 32.0) + float2(0.5, 0.5);  
+  //worldUv = floor(worldUv);
+  
+  //float2 worldUv2 = worldUv;
+  //worldUv2 = floor(worldUv2) * invTexSize.xy;
+  //worldUv2 *= invTexSize.xy;
+  //worldUv = worldUv * invTexSize.xy - float2(0.5, 0.5)*invTexSize.xy;
+  //worldUv = worldUv * invTexSize.xy;
+  
+  
+  float occ = 0;
+  
+  //float2 heightVal = tex2D(heightMap, worldUv).xx;
+  
+  //float4 bitVolRegion0 = tex2D(bitVolumeMap, worldUv);
+  //float4 bitVolRegion1 = tex2D(bitVolumeMap, worldUv + float2(0.5, 0.0) * invTexSize.xy);
+
+  //Now we want to sample in a random direction in fixed K steps
+  //Do it for X' direction while holding Y' constant.
+  int i = 0;
+  //float stepScale = interleavedPattern.z + 0.5;// * 2.0 + 0.5;
+  float stepScale = 0.5;
+  //float stepScale = interleavedPattern.z*2.0 + 0.1;
+  float stepScale2 = interleavedPattern.z*2.0 + 0.5;
+  //float occupancyWeight = 1.0;
+  //float4 occupancyWeight = float4(1.0, 0.0, 0.0, 0.0);
+  float occupancyWeight = 1.0;
+  //float4 oweights;
+  
+  
+  //float2 offset = randXDir.xy * i * stepScale;
+  //float2 samplePt = worldUv + offset;
+  //float2 samplePt2 = worldUv2 + offset;
+
+  //occ += computeV(heightMap, worldUv + offset, worldPos.y, MAX_HEIGHT);
+  float temp = 0.0;
+  for(i = 0; i < KSTEPS; ++i)
+    {
+      float2 offset = randXDir.xy * i * stepScale; //0.1 is a bias
+      float2 samplePt = worldUv + offset;
+      float hd = computeV(heightMap, samplePt * invTexSize.xy, worldPos.y, MAX_HEIGHT) * occupancyWeight;
+      occ += hd;
+      //occ += occupancyWeight;
+    }
+  //oweights.x = occupancyWeight;
+  occupancyWeight = 1.0;
+  for(i = 1; i <= KSTEPS; ++i)
+    {
+      float2 offset = randXDir.xy * -i * stepScale;
+      float2 samplePt = worldUv + offset;
+      //occupancyWeight = computeOccupancyWeight(bitVolumeMap, bitwiseLookupMap, floor(samplePt) * invTexSize.xy, worldPos.y, i * stepScale2, occupancyWeight, invTexSize.xy);
+      //temp += occupancyWeight;
+      float hd = computeV(heightMap, samplePt * invTexSize.xy, worldPos.y, MAX_HEIGHT) * occupancyWeight;
+      //Is this position behind a world position?
+      //occ += saturate(pow(1.0 - hd, 11));
+      occ += hd;
+      //occ += occupancyWeight;
+    }
+  //oweights.y = occupancyWeight;
+  occupancyWeight = 1.0;
+  //Do it for Y' direction while holding X' constant.
+  for(i = 1; i <= KSTEPS; ++i)
+    {
+      float2 offset = randYDir.xy * i * stepScale;
+      float2 samplePt = worldUv + offset;
+      //occupancyWeight = computeOccupancyWeight(bitVolumeMap, bitwiseLookupMap, floor(samplePt) * invTexSize.xy, worldPos.y, i * stepScale2, occupancyWeight.x, invTexSize.xy);
+      //temp += occupancyWeight;
+      float hd = computeV(heightMap, samplePt * invTexSize.xy, worldPos.y, MAX_HEIGHT) * occupancyWeight;
+      //occ += saturate(pow(1.0 - hd, 11));
+      occ += hd;
+      //occ += occupancyWeight;
+    }
+  //oweights.z = occupancyWeight;
+  occupancyWeight = 1.0;
+  for(i = 1; i <= KSTEPS; ++i)
+    {
+      float2 offset = randYDir.xy * -i * stepScale;
+      float2 samplePt = worldUv + offset;
+      //occupancyWeight = computeOccupancyWeight(bitVolumeMap, bitwiseLookupMap, floor(samplePt) * invTexSize.xy, worldPos.y, i * stepScale2, occupancyWeight, invTexSize.xy);
+      //temp += occupancyWeight;
+      float hd = computeV(heightMap, samplePt * invTexSize.xy, worldPos.y, MAX_HEIGHT) * occupancyWeight;
+      //occ += saturate(pow(1.0 - hd, 11));
+      occ += hd;
+      //occ += occupancyWeight;
+   }
+
+  //occ = occ / temp;
+
+  occ /= ((KSTEPS * 4) + 1);
+
+  //figure out chebshev's inequality
+  //float var = occ - occ*occ; //E(x^2) - E(x^2 however since at voxel's occlusion is either 0, or 1, E(x^2) is simply E(x).
+  //const float t = 0.9;
+  //float d = t - occ;
+  //occ = clamp((t <= occ) ? 1.0 : var*var / (var * var + d * d), 0.001, 1.0);
+  //occ = 1.0 - exp(-occ);
+  
+
+  if(depth <=  -0.9999999)
+    occ = 1.0;
+
+  //occ = exp(-(1.0 - occ)*4.0);
+
+  //occ = 1.0;
+  //occ = clamp(0.005, 1.0);
+  //occ *= 0.1;
+  //occ *= smoothstep(0.25, 0.5, occ);
+  //occ *= smoothstep(0.75, 0.8, occ);
+  //occ = (occ < 0.18) ? 0.007 : occ;
+  //occ = clamp(occ, 0.15, 1.0);
+  //occ *= clamp(step(0.75, occ), 0.01, 1.0);
+  //return occupancyWeight;
+  //return float4(occupancyWeight.x , 0.0, 0.0, 1.0);
+  //return float4(geom.xyz, 1.0);
+  return float4(occ, occ, occ, 1.0);
+  //return float4(1, 0, 0, 1);
+  //return float4(randXDir.xy, randYDir.xy);
+  //return float4(oweights.x, 0.0,  0.0, 1.0);
+  //return float4(bitVolRegion0);
+  //return float4(0.0, 0.0, 1.0, 1.0);
+}
+
+#define NUM_BLUR_SAMPLES 4
+
+SamplerState BlurMap : register(s0);
+SamplerState GeomMap : register(s1);
+
+
+float4 hfaoBlurX_ps(float2 uv : TEXCOORD0,
+    uniform float4 invTexSize,
+    uniform float4x4 vMat,
+		    uniform Texture2D map : register(t0)
+		    , uniform Texture2D geomMap : register(t1)) : SV_TARGET0
+									     //uniform sampler2D map : TEXUNIT0, uniform sampler2D geomMap : TEXUNIT1): COLOR0
+{
+//    return TEX2DLOD(ssaoMap, uv);
+  //invTexSize *= 0.5;
+    float2 o = float2(invTexSize.x, 0);
+    //float2 o = float2(1.0 / 1280.0, 0);
+    //float4 sum = TEX2DLOD(map, uv) * (NUM_BLUR_SAMPLES + 1);
+    float4 sum = map.Sample(BlurMap, uv) * (NUM_BLUR_SAMPLES + 1);
+    float denom = NUM_BLUR_SAMPLES + 1;
+    //float4 geom = TEX2DLOD(geomMap, uv);
+    float4 geom = geomMap.Sample(GeomMap, uv);
+
+    geom.xyz = decode(geom);
+  
+    
+    
+    for (int i = 1; i <= NUM_BLUR_SAMPLES; ++i)
+    {
+        float2 nuv = uv + o * i;
+        //float4 nGeom = TEX2DLOD(geomMap, nuv);
+	float4 nGeom = geomMap.Sample(GeomMap, nuv);
+	nGeom.xyz = decode(nGeom);
+	//nGeom.xyz = mul(vMat, float4(nGeom.xyz, 0.0)).xyz;
+        float coef = (NUM_BLUR_SAMPLES + 1 - i) * (dot(geom.xyz, nGeom.xyz) > 0.9); //remember w is now depth
+        //sum += TEX2DLOD(map, nuv) * coef;
+	sum += map.Sample(BlurMap, nuv) * coef;
+        denom += coef;
+    }
+    for (int i = 1; i <= 4; ++i)
+    {
+        float2 nuv = uv + o * -i;
+        //float4 nGeom = TEX2DLOD(geomMap, nuv);
+	float4 nGeom = geomMap.Sample(GeomMap, nuv);
+	nGeom.xyz = decode(nGeom);
+	//nGeom.xyz = mul(vMat, float4(nGeom.xyz, 0.0)).xyz;
+        float coef = (NUM_BLUR_SAMPLES + 1 - i) * (dot(geom.xyz, nGeom.xyz) > 0.9);
+        //sum += TEX2DLOD(map, nuv) * coef;
+	sum += map.Sample(BlurMap, nuv) * coef;
+        denom += coef;
+    }
+    //return  TEX2DLOD(geomMap, uv);
+    return sum / denom;
+}
+
+
+
+float4 hfaoBlurY_ps(float2 uv : TEXCOORD0,
+		    uniform float4 invTexSize,
+		    uniform float4x4 vMat
+		    ,uniform Texture2D map : register(s0)
+		    ,uniform Texture2D geomMap : register(s1)): SV_TARGET0
+												   //uniform sampler2D map : TEXUNIT0, uniform sampler2D geomMap : TEXUNIT1): COLOR0
+{
+
+    float2 o = float2(0, invTexSize.y);
+    
+    //float4 sum = TEX2DLOD(map, uv) * (NUM_BLUR_SAMPLES + 1);
+    float4 sum = map.Sample(BlurMap, uv) * (NUM_BLUR_SAMPLES + 1);
+    float denom = NUM_BLUR_SAMPLES + 1;
+    //float4 geom = TEX2DLOD(geomMap, uv);
+    float4 geom = geomMap.Sample(GeomMap, uv);
+    geom.xyz = decode(geom);
+    //geom.xyz = mul(vMat, float4(geom.xyz, 0.0)).xyz;
+    for (int i = 1; i <= NUM_BLUR_SAMPLES; ++i)
+    {
+        float2 nuv = uv + o * i;
+        //float4 nGeom = TEX2DLOD(geomMap, nuv);
+	float4 nGeom = geomMap.Sample(GeomMap, nuv);
+	nGeom.xyz = decode(nGeom);
+        float coef = (NUM_BLUR_SAMPLES + 1 - i) * (dot(geom.xyz, nGeom.xyz) > 0.9);
+        //sum += TEX2DLOD(map, nuv) * coef;
+	sum += map.Sample(BlurMap, nuv) * coef;
+        denom += coef;
+    }
+    for (int i = 1; i <= 4; ++i)
+    {
+        float2 nuv = uv + o * -i;
+        //float4 nGeom = TEX2DLOD(geomMap, nuv);
+	float4 nGeom = geomMap.Sample(GeomMap, nuv);
+	nGeom.xyz = decode(nGeom);
+	//nGeom.xyz = mul(vMat, float4(nGeom.xyz, 0.0)).xyz;
+        float coef = (NUM_BLUR_SAMPLES + 1 - i) * (dot(geom.xyz, nGeom.xyz) > 0.9);
+        //sum += TEX2DLOD(map, nuv) * coef;
+        sum += map.Sample(BlurMap, nuv) * coef;
+	denom += coef;
+    }
+   //return  TEX2DLOD(geomMap, uv);
+    return sum / denom;
+}
